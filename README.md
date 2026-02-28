@@ -1,6 +1,6 @@
 # FMPC Scribe
 
-A fully local, automated medical lecture transcription and summarization engine I built for myself as a first-year medical student at FMPC Casablanca.
+A fully local, automated medical lecture transcription and summarization engine I built for myself as a student.
 
 ## The problem it solves
 
@@ -49,3 +49,10 @@ Hardware assembly in progress. Code complete and documented.
 ## Why I built this
 
 I got tired of relistening to 2-hour lectures to find one concept I missed. I'd rather spend that time building the tool that does it for me.
+
+## Planned features
+
+- **Auto-shutdown** — PC shuts down automatically after INBOX has been empty for 30 minutes
+- **Anki card generation** — Llama 3 generates front/back flashcards from transcript + lecture PDF, pushed directly into Anki via AnkiConnect
+- **RAG system** — ChromaDB indexes the raw transcripts and slide PDFs directly (not summaries, to preserve accuracy). When asking questions, Llama 3 retrieves the most relevant chunks from what my professor actually said and taught, following a strict hierarchy: transcribed lecture first, slides second, general knowledge as last resort fallback. Contradictions between transcript and slides are flagged explicitly in the response
+- **MCQ interface** — Streamlit-based interface on top of the RAG system for practicing past exam questions. Inaccuracies in existing platforms like MonQCM/UniQCM (past exam corrections specifically) have been a known and very annoying issue — this version grounds every explanation directly from the professors own lecture material (slides,lessoms,literal lecture...), so corrections are sourced from what your professor actually taught
