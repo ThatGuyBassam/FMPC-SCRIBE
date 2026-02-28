@@ -1,12 +1,13 @@
-import time, os, subprocess, sys, torch, gc, requests, logging
+import time, os, subprocess, sys, torch, gc, requests, logging, shutil
 import librosa, soundfile as sf, noisereduce as nr
 from faster_whisper import WhisperModel
+from datetime import datetime
 
 # ─── CONFIG ────────────────────────────────────────────────────────
 BASE_DIR    = r"C:\FMPC_Scribe"
 INBOX       = os.path.join(BASE_DIR, "INBOX")
 TRANSCRIPTS = os.path.join(BASE_DIR, "NOTES_Transcripts")
-ARCHIVE     = r"D:\FMPC_Audio_Archive\Medical"
+ARCHIVE_HDD = r"D:\FMPC_Audio_Archive\Medical"
 LOG_PATH    = os.path.join(BASE_DIR, "scribe_log.txt")
 OLLAMA_URL  = "http://localhost:11434/api/generate"
 TMP_WAV     = os.path.join(BASE_DIR, "temp_processing.wav")
@@ -20,6 +21,9 @@ NOISE_REDUCTION = 0.65
 # Increase to 4.0 if paragraphs are too fragmented.
 PARAGRAPH_PAUSE = 2.5
 
+# Auto-shutdown: minutes of empty INBOX before PC shuts down.
+SHUTDOWN_AFTER_MINUTES = 30
+
 # Medical glossary — extend with your professors' specific terms.
 INITIAL_PROMPT = (
     "Medical lecture, French and English. Terms: NGS, CRISPR, PCR, mRNA, "
@@ -29,7 +33,7 @@ INITIAL_PROMPT = (
 )
 
 # ─── SETUP ─────────────────────────────────────────────────────────
-for d in [INBOX, TRANSCRIPTS, ARCHIVE]:
+for d in [INBOX, TRANSCRIPTS, ARCHIVE_HDD]:
     os.makedirs(d, exist_ok=True)
 
 logging.basicConfig(
@@ -42,7 +46,7 @@ logging.basicConfig(
 )
 log = logging.getLogger()
 
-# ─── FIX 2: STARTUP CLEANUP ────────────────────────────────────────
+# ─── STARTUP CLEANUP ───────────────────────────────────────────────
 # Remove any leftover temp file from a previous crash or power cut.
 if os.path.exists(TMP_WAV):
     os.remove(TMP_WAV)
@@ -54,7 +58,7 @@ def clear_vram():
     gc.collect()
     log.info(f"VRAM freed. Allocated: {torch.cuda.memory_allocated()/1e9:.2f} GB")
 
-# ─── FIX 3: PARAGRAPH GROUPING ─────────────────────────────────────
+# ─── PARAGRAPH GROUPING ────────────────────────────────────────────
 def segments_to_paragraphs(segments, pause_threshold=PARAGRAPH_PAUSE):
     """
     Group Whisper segments into readable paragraphs.
@@ -87,22 +91,54 @@ def format_time(seconds):
     s = int(seconds % 60)
     return f"{m:02d}:{s:02d}"
 
+# ─── OLLAMA LABELING ───────────────────────────────────────────────
+def generate_label(transcript_text):
+    """
+    Ask Ollama to identify the course name and main topic from the transcript.
+    Returns a filename-safe label in the format: course_topic_YYYY-MM-DD
+    """
+    today = datetime.now().strftime("%Y-%m-%d")
+    prompt = (
+        "You are a medical lecture labeler. Read the following transcript excerpt "
+        "and respond with ONLY a filename label in this exact format:\n"
+        "coursename_maintopic_" + today + "\n\n"
+        "Rules:\n"
+        "- coursename: single word, lowercase, no spaces (e.g. hematology, histology, cardiology)\n"
+        "- maintopic: 1-3 words max, lowercase, hyphenated (e.g. erythrocyte-disorders, cardiac-cycle)\n"
+        "- Do not add any explanation, just the label\n\n"
+        "Transcript excerpt:\n" + transcript_text[:2000]
+    )
+    try:
+        res = requests.post(OLLAMA_URL, json={
+            "model": "llama3",
+            "prompt": prompt,
+            "stream": False
+        }, timeout=60)
+        label = res.json().get("response", "").strip().lower()
+        # Sanitize: remove any characters that aren't alphanumeric, hyphens, or underscores
+        label = "".join(c for c in label if c.isalnum() or c in "-_")
+        if not label:
+            label = f"lecture_{today}"
+        log.info(f"  Generated label: {label}")
+        return label
+    except Exception as e:
+        log.error(f"  Labeling failed: {e}. Using fallback label.")
+        return f"lecture_{today}"
+
 # ─── MAIN PROCESSOR ────────────────────────────────────────────────
 def process_file(file_path, name):
     log.info(f"─── BEGIN: {name} ───────────────────────────")
-    base_name = os.path.splitext(name)[0]
-    txt_path  = os.path.join(TRANSCRIPTS, base_name + ".txt")
-    sum_path  = os.path.join(TRANSCRIPTS, base_name + "_summary.txt")
+    file_ext = os.path.splitext(name)[1]
 
     # ── STEP 1: AUDIO CLEANING ──────────────────────────────────
-    log.info("Step 1/4: Cleaning audio...")
+    log.info("Step 1/3: Cleaning audio...")
     y, sr = librosa.load(file_path, sr=None, mono=True)
     clean_y = nr.reduce_noise(y=y, sr=sr, prop_decrease=NOISE_REDUCTION)
     sf.write(TMP_WAV, clean_y, sr)
     log.info(f"  Duration: {len(y)/sr:.1f}s | Sample rate: {sr}Hz")
 
     # ── STEP 2: TRANSCRIPTION ────────────────────────────────────
-    log.info("Step 2/4: Loading Whisper Large-v3...")
+    log.info("Step 2/3: Loading Whisper Large-v3...")
     model = WhisperModel("large-v3", device="cuda", compute_type="float16")
     log.info(f"  VRAM after load: {torch.cuda.memory_allocated()/1e9:.2f} GB")
 
@@ -116,57 +152,49 @@ def process_file(file_path, name):
     )
     log.info(f"  Language: {info.language} ({info.language_probability:.0%})")
 
-    # Collect segments into a list (generator exhausts on first pass)
     segment_list = list(segments)
     log.info(f"  Segments collected: {len(segment_list)}")
 
-    # ── FIX 3: WRITE PARAGRAPHS ──────────────────────────────────
     paragraphs = segments_to_paragraphs(segment_list)
     log.info(f"  Grouped into {len(paragraphs)} paragraphs (threshold: {PARAGRAPH_PAUSE}s)")
 
-    with open(txt_path, "w", encoding="utf-8") as f:
-        f.write(f"TRANSCRIPT: {base_name}\n")
-        f.write(f"Language: {info.language} | Segments: {len(segment_list)} | Paragraphs: {len(paragraphs)}\n")
-        f.write("=" * 60 + "\n\n")
-        for (start, end, text) in paragraphs:
-            f.write(f"[{format_time(start)} - {format_time(end)}]\n")
-            f.write(f"{text}\n\n")
-    log.info(f"  Transcript saved: {txt_path}")
+    # Build raw transcript text
+    transcript_lines = []
+    for (start, end, text) in paragraphs:
+        transcript_lines.append(f"[{format_time(start)} - {format_time(end)}]")
+        transcript_lines.append(f"{text}\n")
+    transcript_text = "\n".join(transcript_lines)
 
-    # ── VRAM HANDOVER ────────────────────────────────────────────
     del model
     clear_vram()
-    log.info("  Whisper unloaded. VRAM cleared for Llama 3.")
+    log.info("  Whisper unloaded. VRAM cleared.")
 
-    # ── STEP 3: SUMMARIZATION ────────────────────────────────────
-    log.info("Step 3/4: Running Llama 3 summarization...")
-    with open(txt_path, "r", encoding="utf-8") as f:
-        transcript = f.read()
+    # ── STEP 3: OLLAMA LABELING ──────────────────────────────────
+    log.info("Step 3/3: Generating label with Ollama...")
+    label = generate_label(transcript_text)
 
-    prompt = (
-        "Tu es un assistant medical expert. Voici la transcription d'un cours.\n"
-        "Genere un resume structure avec:\n"
-        "1. Points cles (bullet points)\n"
-        "2. Termes medicaux importants et leurs definitions\n"
-        "3. Concepts a retenir pour l'examen\n\n"
-        f"TRANSCRIPTION:\n{transcript}"
+    # ── SAVE TRANSCRIPT ──────────────────────────────────────────
+    txt_filename = label + ".txt"
+    txt_ssd_path = os.path.join(TRANSCRIPTS, txt_filename)
+    txt_hdd_path = os.path.join(ARCHIVE_HDD, txt_filename)
+
+    header = (
+        f"TRANSCRIPT: {label}\n"
+        f"Language: {info.language} | Segments: {len(segment_list)} | Paragraphs: {len(paragraphs)}\n"
+        + "=" * 60 + "\n\n"
     )
-    try:
-        res = requests.post(OLLAMA_URL, json={
-            "model": "llama3",
-            "prompt": prompt,
-            "stream": False
-        }, timeout=600)
-        summary = res.json().get("response", "[No response from model]")
-        with open(sum_path, "w", encoding="utf-8") as f:
-            f.write(summary)
-        log.info(f"  Summary saved: {sum_path}")
-    except Exception as e:
-        log.error(f"  LLM summarization failed: {e}")
 
-    # ── STEP 4: ARCHIVE ──────────────────────────────────────────
-    log.info("Step 4/4: Archiving at 48kbps Opus...")
-    out_opus = os.path.join(ARCHIVE, base_name + ".opus")
+    with open(txt_ssd_path, "w", encoding="utf-8") as f:
+        f.write(header + transcript_text)
+    log.info(f"  Transcript saved to SSD: {txt_ssd_path}")
+
+    # Copy transcript to HDD archive
+    shutil.copy2(txt_ssd_path, txt_hdd_path)
+    log.info(f"  Transcript copied to HDD: {txt_hdd_path}")
+
+    # ── ARCHIVE AUDIO ────────────────────────────────────────────
+    opus_filename = label + ".opus"
+    out_opus = os.path.join(ARCHIVE_HDD, opus_filename)
     result = subprocess.run([
         "ffmpeg", "-i", file_path,
         "-c:a", "libopus", "-b:a", "48k",
@@ -177,35 +205,51 @@ def process_file(file_path, name):
         log.error(f"  FFmpeg error: {result.stderr.decode()}")
     else:
         orig_mb = os.path.getsize(file_path) / 1e6
-        opus_mb = os.path.getsize(out_opus)  / 1e6
-        log.info(f"  {orig_mb:.1f}MB -> {opus_mb:.1f}MB ({100*(1-opus_mb/orig_mb):.0f}% saved)")
+        opus_mb = os.path.getsize(out_opus) / 1e6
+        log.info(f"  Audio archived: {orig_mb:.1f}MB -> {opus_mb:.1f}MB ({100*(1-opus_mb/orig_mb):.0f}% saved)")
 
     # ── CLEANUP ──────────────────────────────────────────────────
     os.remove(file_path)
     if os.path.exists(TMP_WAV):
         os.remove(TMP_WAV)
-    log.info(f"─── COMPLETE: {base_name} ────────────────────────")
+    log.info(f"─── COMPLETE: {label} ────────────────────────")
 
 # ─── WATCHDOG LOOP ─────────────────────────────────────────────────
 SUPPORTED = ('.m4a', '.mp3', '.wav', '.aac', '.ogg', '.flac')
 
 log.info("=" * 55)
-log.info("FMPC SCRIBE ENGINE v1.1 — STARTED")
+log.info("FMPC SCRIBE ENGINE v2.0 — STARTED")
 log.info(f"Watching: {INBOX}")
 log.info(f"Paragraph pause threshold: {PARAGRAPH_PAUSE}s")
 log.info(f"Noise reduction: {NOISE_REDUCTION}")
+log.info(f"Auto-shutdown after: {SHUTDOWN_AFTER_MINUTES} minutes idle")
 log.info(f"GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'NOT FOUND'}")
 log.info("=" * 55)
+
+idle_since = None
 
 while True:
     try:
         files = [f for f in os.listdir(INBOX) if f.lower().endswith(SUPPORTED)]
-        for fname in files:
-            fpath = os.path.join(INBOX, fname)
-            try:
-                process_file(fpath, fname)
-            except Exception as e:
-                log.error(f"FAILED [{fname}]: {e}", exc_info=True)
+
+        if files:
+            idle_since = None
+            for fname in files:
+                fpath = os.path.join(INBOX, fname)
+                try:
+                    process_file(fpath, fname)
+                except Exception as e:
+                    log.error(f"FAILED [{fname}]: {e}", exc_info=True)
+        else:
+            if idle_since is None:
+                idle_since = time.time()
+            idle_minutes = (time.time() - idle_since) / 60
+            if idle_minutes >= SHUTDOWN_AFTER_MINUTES:
+                log.info(f"INBOX empty for {SHUTDOWN_AFTER_MINUTES} minutes. Shutting down PC...")
+                os.system("shutdown /s /t 60")
+                break
+
     except Exception as e:
         log.error(f"Watchdog error: {e}")
+
     time.sleep(10)
