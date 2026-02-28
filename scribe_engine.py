@@ -1,4 +1,4 @@
-import time, os, subprocess, sys, torch, gc, requests, logging, shutil
+import time, os, subprocess, sys, torch, gc, requests, logging, shutil, ctypes
 import librosa, soundfile as sf, noisereduce as nr
 from faster_whisper import WhisperModel
 from datetime import datetime
@@ -21,7 +21,7 @@ NOISE_REDUCTION = 0.65
 # Increase to 4.0 if paragraphs are too fragmented.
 PARAGRAPH_PAUSE = 2.5
 
-# Auto-shutdown: minutes of empty INBOX before PC shuts down.
+# Minutes of empty INBOX before auto-shutdown check begins.
 SHUTDOWN_AFTER_MINUTES = 30
 
 # Medical glossary — extend with your professors' specific terms.
@@ -57,6 +57,21 @@ def clear_vram():
     torch.cuda.empty_cache()
     gc.collect()
     log.info(f"VRAM freed. Allocated: {torch.cuda.memory_allocated()/1e9:.2f} GB")
+
+# ─── USER ACTIVITY CHECK ───────────────────────────────────────────
+def get_idle_seconds():
+    """
+    Returns seconds since last mouse movement or keypress.
+    Uses Windows GetLastInputInfo — no external libraries needed.
+    """
+    class LASTINPUTINFO(ctypes.Structure):
+        _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
+
+    lii = LASTINPUTINFO()
+    lii.cbSize = ctypes.sizeof(lii)
+    ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii))
+    millis = ctypes.windll.kernel32.GetTickCount() - lii.dwTime
+    return millis / 1000.0
 
 # ─── PARAGRAPH GROUPING ────────────────────────────────────────────
 def segments_to_paragraphs(segments, pause_threshold=PARAGRAPH_PAUSE):
@@ -95,7 +110,7 @@ def format_time(seconds):
 def generate_label(transcript_text):
     """
     Ask Ollama to identify the course name and main topic from the transcript.
-    Returns a filename-safe label in the format: course_topic_YYYY-MM-DD
+    Returns a filename-safe label in the format: coursename_maintopic_YYYY-MM-DD
     """
     today = datetime.now().strftime("%Y-%m-%d")
     prompt = (
@@ -115,7 +130,6 @@ def generate_label(transcript_text):
             "stream": False
         }, timeout=60)
         label = res.json().get("response", "").strip().lower()
-        # Sanitize: remove any characters that aren't alphanumeric, hyphens, or underscores
         label = "".join(c for c in label if c.isalnum() or c in "-_")
         if not label:
             label = f"lecture_{today}"
@@ -128,7 +142,6 @@ def generate_label(transcript_text):
 # ─── MAIN PROCESSOR ────────────────────────────────────────────────
 def process_file(file_path, name):
     log.info(f"─── BEGIN: {name} ───────────────────────────")
-    file_ext = os.path.splitext(name)[1]
 
     # ── STEP 1: AUDIO CLEANING ──────────────────────────────────
     log.info("Step 1/3: Cleaning audio...")
@@ -188,13 +201,11 @@ def process_file(file_path, name):
         f.write(header + transcript_text)
     log.info(f"  Transcript saved to SSD: {txt_ssd_path}")
 
-    # Copy transcript to HDD archive
     shutil.copy2(txt_ssd_path, txt_hdd_path)
     log.info(f"  Transcript copied to HDD: {txt_hdd_path}")
 
     # ── ARCHIVE AUDIO ────────────────────────────────────────────
-    opus_filename = label + ".opus"
-    out_opus = os.path.join(ARCHIVE_HDD, opus_filename)
+    out_opus = os.path.join(ARCHIVE_HDD, label + ".opus")
     result = subprocess.run([
         "ffmpeg", "-i", file_path,
         "-c:a", "libopus", "-b:a", "48k",
@@ -243,11 +254,35 @@ while True:
         else:
             if idle_since is None:
                 idle_since = time.time()
+
             idle_minutes = (time.time() - idle_since) / 60
+
             if idle_minutes >= SHUTDOWN_AFTER_MINUTES:
-                log.info(f"INBOX empty for {SHUTDOWN_AFTER_MINUTES} minutes. Shutting down PC...")
-                os.system("shutdown /s /t 60")
-                break
+                user_idle_seconds = get_idle_seconds()
+
+                if user_idle_seconds >= 600:  # 10 minutes inactive
+                    log.info("INBOX empty and user inactive for 10+ min. Triggering shutdown...")
+
+                    # Visible popup on all Windows 11 installs
+                    os.system(
+                        'powershell -command "Add-Type -AssemblyName System.Windows.Forms; '
+                        '[System.Windows.Forms.MessageBox]::Show('
+                        "'FMPC Scribe: INBOX empty and you have been idle for 10+ minutes. "
+                        "PC is shutting down in 60 seconds. To cancel: open CMD and type shutdown /a'"
+                        ')"'
+                    )
+
+                    log.info("Shutdown popup shown. To cancel: open CMD and type shutdown /a")
+                    os.system("shutdown /s /t 60")
+                    break
+
+                else:
+                    log.info(
+                        f"INBOX empty but user active "
+                        f"({user_idle_seconds:.0f}s since last input). "
+                        f"Checking again in 1 hour."
+                    )
+                    idle_since = time.time() - ((SHUTDOWN_AFTER_MINUTES - 60) * 60)
 
     except Exception as e:
         log.error(f"Watchdog error: {e}")
