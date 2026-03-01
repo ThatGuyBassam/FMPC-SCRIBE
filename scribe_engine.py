@@ -1,4 +1,4 @@
-import time, os, sys, logging, ctypes
+import time, os, sys, logging, ctypes, subprocess
 from datetime import datetime
 
 # ─── CONFIG ────────────────────────────────────────────────────────
@@ -81,7 +81,6 @@ def process_file(file_path, name):
     log.info(f"─── COMPLETE: {name} ───────────────────────────")
 
 # ─── WATCHDOG LOOP ─────────────────────────────────────────────────
-import subprocess
 
 log.info("=" * 55)
 log.info("FMPC SCRIBE ENGINE v3.0 — STARTED")
