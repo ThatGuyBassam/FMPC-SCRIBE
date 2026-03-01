@@ -27,9 +27,13 @@ def generate_label(transcript_text):
             "stream": False
         }, timeout=60)
         label = res.json().get("response", "").strip().lower()
+        # Remove any date Llama may have added — we append our own
+        label = label.split("_202")[0].split("_201")[0].split("_200")[0]
         label = "".join(c for c in label if c.isalnum() or c in "-_")
         if not label:
-            label = f"lecture_{today}"
+            label = "lecture"
+        label = f"{label}_{today}"
+
         print(f"[LABELER] Generated label: {label}")
         return label
     except Exception as e:
@@ -101,3 +105,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
