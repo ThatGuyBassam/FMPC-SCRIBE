@@ -1,4 +1,4 @@
-import sys, json, torch, gc
+import sys, json, torch, gc, os
 import librosa, soundfile as sf, noisereduce as nr
 from faster_whisper import WhisperModel
 
@@ -92,7 +92,12 @@ def main():
 
     print(f"[TRANSCRIBER] Result saved to {TMP_RESULT}")
     print("[TRANSCRIBER] DONE — exiting cleanly.")
+    os._exit(0)
     # Process exits here — CUDA context released naturally by OS
+
+if __name__ == "__main__":
+    main()
+
 
 if __name__ == "__main__":
     main()
