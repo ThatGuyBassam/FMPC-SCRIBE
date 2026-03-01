@@ -247,3 +247,64 @@ def process_file(file_path, name):
         log.info(f"─── COMPLETE: {label} ────────────────────────")
     except Exception as e:
         log.error(f"Cleanup failed: {e}", exc_info=True)
+
+# ─── WATCHDOG LOOP ─────────────────────────────────────────────────
+SUPPORTED = ('.m4a', '.mp3', '.wav', '.aac', '.ogg', '.flac')
+
+log.info("=" * 55)
+log.info("FMPC SCRIBE ENGINE v2.0 — STARTED")
+log.info(f"Watching: {INBOX}")
+log.info(f"Paragraph pause threshold: {PARAGRAPH_PAUSE}s")
+log.info(f"Noise reduction: {NOISE_REDUCTION}")
+log.info(f"Auto-shutdown after: {SHUTDOWN_AFTER_MINUTES} minutes idle")
+log.info(f"GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'NOT FOUND'}")
+log.info("=" * 55)
+
+idle_since = None
+
+while True:
+    try:
+        files = [f for f in os.listdir(INBOX) if f.lower().endswith(SUPPORTED)]
+
+        if files:
+            idle_since = None
+            for fname in files:
+                fpath = os.path.join(INBOX, fname)
+                try:
+                    process_file(fpath, fname)
+                except Exception as e:
+                    log.error(f"FAILED [{fname}]: {e}", exc_info=True)
+                    raise
+        else:
+            if idle_since is None:
+                idle_since = time.time()
+
+            idle_minutes = (time.time() - idle_since) / 60
+
+            if idle_minutes >= SHUTDOWN_AFTER_MINUTES:
+                user_idle_seconds = get_idle_seconds()
+
+                if user_idle_seconds >= 600:
+                    log.info("INBOX empty and user inactive for 10+ min. Triggering shutdown...")
+                    os.system(
+                        'powershell -command "Add-Type -AssemblyName System.Windows.Forms; '
+                        '[System.Windows.Forms.MessageBox]::Show('
+                        "'FMPC Scribe: INBOX empty and you have been idle for 10+ minutes. "
+                        "PC is shutting down in 60 seconds. To cancel: open CMD and type shutdown /a'"
+                        ')"'
+                    )
+                    log.info("Shutdown popup shown. To cancel: open CMD and type shutdown /a")
+                    os.system("shutdown /s /t 60")
+                    break
+                else:
+                    log.info(
+                        f"INBOX empty but user active "
+                        f"({user_idle_seconds:.0f}s since last input). "
+                        f"Checking again in 1 hour."
+                    )
+                    idle_since = time.time() - ((SHUTDOWN_AFTER_MINUTES - 60) * 60)
+
+    except Exception as e:
+        log.error(f"Watchdog error: {e}")
+
+    time.sleep(10)
