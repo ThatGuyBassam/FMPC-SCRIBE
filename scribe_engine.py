@@ -178,113 +178,72 @@ def process_file(file_path, name):
         transcript_lines.append(f"{text}\n")
     transcript_text = "\n".join(transcript_lines)
 
-    del model
-    clear_vram()
-    log.info("  Whisper unloaded. VRAM cleared.")
+    log.info("DEBUG: Built transcript text")
 
-    # ── STEP 3: OLLAMA LABELING ──────────────────────────────────
-    log.info("Step 3/3: Generating label with Ollama...")
-    label = generate_label(transcript_text)
-
-    # ── SAVE TRANSCRIPT ──────────────────────────────────────────
-    txt_filename = label + ".txt"
-    txt_ssd_path = os.path.join(TRANSCRIPTS, txt_filename)
-    txt_hdd_path = os.path.join(ARCHIVE_HDD, txt_filename)
-
-    header = (
-        f"TRANSCRIPT: {label}\n"
-        f"Language: {info.language} | Segments: {len(segment_list)} | Paragraphs: {len(paragraphs)}\n"
-        + "=" * 60 + "\n\n"
-    )
-
-    with open(txt_ssd_path, "w", encoding="utf-8") as f:
-        f.write(header + transcript_text)
-    log.info(f"  Transcript saved to SSD: {txt_ssd_path}")
-
-    shutil.copy2(txt_ssd_path, txt_hdd_path)
-    log.info(f"  Transcript copied to HDD: {txt_hdd_path}")
-
-    # ── ARCHIVE AUDIO ────────────────────────────────────────────
-    out_opus = os.path.join(ARCHIVE_HDD, label + ".opus")
-    result = subprocess.run([
-        "ffmpeg", "-i", file_path,
-        "-c:a", "libopus", "-b:a", "48k",
-        "-application", "voip",
-        "-y", out_opus
-    ], capture_output=True)
-    if result.returncode != 0:
-        log.error(f"  FFmpeg error: {result.stderr.decode()}")
-    else:
-        orig_mb = os.path.getsize(file_path) / 1e6
-        opus_mb = os.path.getsize(out_opus) / 1e6
-        log.info(f"  Audio archived: {orig_mb:.1f}MB -> {opus_mb:.1f}MB ({100*(1-opus_mb/orig_mb):.0f}% saved)")
-
-    # ── CLEANUP ──────────────────────────────────────────────────
-    os.remove(file_path)
-    if os.path.exists(TMP_WAV):
-        os.remove(TMP_WAV)
-    log.info(f"─── COMPLETE: {label} ────────────────────────")
-
-# ─── WATCHDOG LOOP ─────────────────────────────────────────────────
-SUPPORTED = ('.m4a', '.mp3', '.wav', '.aac', '.ogg', '.flac')
-
-log.info("=" * 55)
-log.info("FMPC SCRIBE ENGINE v2.0 — STARTED")
-log.info(f"Watching: {INBOX}")
-log.info(f"Paragraph pause threshold: {PARAGRAPH_PAUSE}s")
-log.info(f"Noise reduction: {NOISE_REDUCTION}")
-log.info(f"Auto-shutdown after: {SHUTDOWN_AFTER_MINUTES} minutes idle")
-log.info(f"GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'NOT FOUND'}")
-log.info("=" * 55)
-
-idle_since = None
-
-while True:
     try:
-        files = [f for f in os.listdir(INBOX) if f.lower().endswith(SUPPORTED)]
-
-        if files:
-            idle_since = None
-            for fname in files:
-                fpath = os.path.join(INBOX, fname)
-                try:
-                    process_file(fpath, fname)
-                except Exception as e:
-                    log.error(f"FAILED [{fname}]: {e}", exc_info=True)
-        else:
-            if idle_since is None:
-                idle_since = time.time()
-
-            idle_minutes = (time.time() - idle_since) / 60
-
-            if idle_minutes >= SHUTDOWN_AFTER_MINUTES:
-                user_idle_seconds = get_idle_seconds()
-
-                if user_idle_seconds >= 600:  # 10 minutes inactive
-                    log.info("INBOX empty and user inactive for 10+ min. Triggering shutdown...")
-
-                    # Visible popup on all Windows 11 installs
-                    os.system(
-                        'powershell -command "Add-Type -AssemblyName System.Windows.Forms; '
-                        '[System.Windows.Forms.MessageBox]::Show('
-                        "'FMPC Scribe: INBOX empty and you have been idle for 10+ minutes. "
-                        "PC is shutting down in 60 seconds. To cancel: open CMD and type shutdown /a'"
-                        ')"'
-                    )
-
-                    log.info("Shutdown popup shown. To cancel: open CMD and type shutdown /a")
-                    os.system("shutdown /s /t 60")
-                    break
-
-                else:
-                    log.info(
-                        f"INBOX empty but user active "
-                        f"({user_idle_seconds:.0f}s since last input). "
-                        f"Checking again in 1 hour."
-                    )
-                    idle_since = time.time() - ((SHUTDOWN_AFTER_MINUTES - 60) * 60)
-
+        del model
+        clear_vram()
+        log.info("DEBUG: VRAM cleared successfully")
     except Exception as e:
-        log.error(f"Watchdog error: {e}")
+        log.error(f"VRAM clear failed: {e}", exc_info=True)
 
-    time.sleep(10)
+    log.info("DEBUG: About to call Ollama labeler")
+
+    try:
+        label = generate_label(transcript_text)
+        log.info(f"DEBUG: Label generated: {label}")
+    except Exception as e:
+        log.error(f"Labeling failed: {e}", exc_info=True)
+        label = f"lecture_{datetime.now().strftime('%Y-%m-%d')}"
+        log.info(f"DEBUG: Using fallback label: {label}")
+
+    log.info("DEBUG: About to save transcript")
+
+    try:
+        txt_filename = label + ".txt"
+        txt_ssd_path = os.path.join(TRANSCRIPTS, txt_filename)
+        txt_hdd_path = os.path.join(ARCHIVE_HDD, txt_filename)
+
+        header = (
+            f"TRANSCRIPT: {label}\n"
+            f"Language: {info.language} | Segments: {len(segment_list)} | Paragraphs: {len(paragraphs)}\n"
+            + "=" * 60 + "\n\n"
+        )
+
+        with open(txt_ssd_path, "w", encoding="utf-8") as f:
+            f.write(header + transcript_text)
+        log.info(f"DEBUG: Transcript saved to SSD: {txt_ssd_path}")
+
+        shutil.copy2(txt_ssd_path, txt_hdd_path)
+        log.info(f"DEBUG: Transcript copied to HDD: {txt_hdd_path}")
+    except Exception as e:
+        log.error(f"Transcript save failed: {e}", exc_info=True)
+
+    log.info("DEBUG: About to archive audio")
+
+    try:
+        out_opus = os.path.join(ARCHIVE_HDD, label + ".opus")
+        result = subprocess.run([
+            "ffmpeg", "-i", file_path,
+            "-c:a", "libopus", "-b:a", "48k",
+            "-application", "voip",
+            "-y", out_opus
+        ], capture_output=True)
+        if result.returncode != 0:
+            log.error(f"  FFmpeg error: {result.stderr.decode()}")
+        else:
+            orig_mb = os.path.getsize(file_path) / 1e6
+            opus_mb = os.path.getsize(out_opus) / 1e6
+            log.info(f"  Audio archived: {orig_mb:.1f}MB -> {opus_mb:.1f}MB ({100*(1-opus_mb/orig_mb):.0f}% saved)")
+    except Exception as e:
+        log.error(f"Archive failed: {e}", exc_info=True)
+
+    log.info("DEBUG: About to cleanup")
+
+    try:
+        os.remove(file_path)
+        if os.path.exists(TMP_WAV):
+            os.remove(TMP_WAV)
+        log.info(f"─── COMPLETE: {label} ────────────────────────")
+    except Exception as e:
+        log.error(f"Cleanup failed: {e}", exc_info=True)
