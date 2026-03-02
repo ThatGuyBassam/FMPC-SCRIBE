@@ -6,10 +6,10 @@ Personal project I built to stop wasting time relistening to 2-hour lectures —
 
 1. Record lecture on phone (any format — M4A, MP3, WAV)
 2. Open Solid Explorer on phone, upload audio to the Pi's staging folder (`~/fmpc_staging`)
-3. Pi detects the file automatically, sends Magic Packet to wake the PC, waits for Windows to boot, refreshes the SMB mount, moves the file into the PC's INBOX
+3. Pi detects the file automatically, sends a Magic Packet to wake the PC, waits for Windows to boot, refreshes the SMB mount, and moves the file into the PC's INBOX
 4. Windows Task Scheduler runs `scribe_engine.py` automatically on boot — it orchestrates two sub-processes: `transcriber.py` handles Whisper on GPU, `labeler.py` handles Ollama labeling and archiving
 5. Engine cleans audio, transcribes with Whisper Large-v3, labels automatically with Llama 3, archives transcript and audio
-6. PC shuts itself down automatically once INBOX has been empty for 30 minutes and you are not actively using it
+6. PC shuts itself down automatically once INBOX has been empty for 30 minutes and the computer isn't in use
 
 You upload the file and walk away. Everything else is automatic.
 
