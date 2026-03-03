@@ -113,6 +113,8 @@ def filter_repetitions(text: str) -> str:
     # Multi-word phrase repetition e.g. "Sous-titrage MFP. Sous-titrage MFP..."
     cleaned = re.sub(r'(.{8,80}?)\s*(?:\1\s*){2,}', r'\1 ', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'  +', ' ', cleaned).strip()
+    if any(phrase in cleaned for phrase in ["calibrer", "phonétique", "FMPC Maroc", "darija", "exhaustive"]):
+        return ""
     words = cleaned.lower().split()
     if len(words) > 5:
         most_common = max(words.count(w) for w in set(words))
