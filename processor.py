@@ -1,26 +1,119 @@
 import sys, json, os, shutil, subprocess, requests
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ─── CONFIG ────────────────────────────────────────────────────────
-TRANSCRIPTS = r"C:\FMPC_Scribe\NOTES_Transcripts"
-ARCHIVE_HDD = r"D:\FMPC_Audio_Archive\Medical"
-TMP_RESULT  = r"C:\FMPC_Scribe\temp_result.json"
-TMP_WAV     = r"C:\FMPC_Scribe\temp_processing.wav"
-OLLAMA_URL  = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "qwen2.5:7b"
+TRANSCRIPTS   = r"C:\FMPC_Scribe\NOTES_Transcripts"
+ARCHIVE_HDD   = r"D:\FMPC_Audio_Archive\Medical"
+TMP_RESULT    = r"C:\FMPC_Scribe\temp_result.json"
+TMP_WAV       = r"C:\FMPC_Scribe\temp_processing.wav"
+SCHEDULE_FILE = r"C:\FMPC_Scribe\schedule.json"
+OLLAMA_URL    = "http://localhost:11434/api/generate"
+OLLAMA_MODEL  = "qwen2.5:7b"
 MAX_CHUNK_CHARS = 2500
 
-def generate_label(transcript_text):
-    today = datetime.now().strftime("%Y-%m-%d")
+# ─── SCHEDULE LOOKUP ───────────────────────────────────────────────
+def load_schedule():
+    with open(SCHEDULE_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def get_candidates_from_schedule(file_path):
+    """
+    Find all possible courses scheduled at the recording time,
+    across both sections, deduplicated by discipline.
+    """
+    try:
+        sched = load_schedule()
+        all_slots = sched["schedule"]
+
+        file_ctime = os.path.getctime(file_path)
+        file_dt = datetime.fromtimestamp(file_ctime)
+        file_date_str = file_dt.strftime("%Y-%m-%d")
+
+        print(f"[PROCESSOR] Audio recorded: {file_dt.strftime('%Y-%m-%d %H:%M')}")
+
+        day_slots = [s for s in all_slots if s["date"] == file_date_str]
+        if not day_slots:
+            print(f"[PROCESSOR] No schedule entries for {file_date_str}.")
+            return []
+
+        matching = []
+        seen_disciplines = set()
+
+        for slot in day_slots:
+            slot_start   = datetime.strptime(f"{slot['date']} {slot['start']}", "%Y-%m-%d %H:%M")
+            slot_end     = datetime.strptime(f"{slot['date']} {slot['end']}",   "%Y-%m-%d %H:%M")
+            window_start = slot_start - timedelta(minutes=30)
+            window_end   = slot_end   + timedelta(minutes=30)
+
+            if window_start <= file_dt <= window_end:
+                if slot["discipline"] not in seen_disciplines:
+                    seen_disciplines.add(slot["discipline"])
+                    matching.append(slot)
+
+        if matching:
+            print(f"[PROCESSOR] Candidate courses: {[s['discipline'] for s in matching]}")
+        else:
+            print(f"[PROCESSOR] No slot matches recording time {file_dt.strftime('%H:%M')}.")
+
+        return matching
+
+    except Exception as e:
+        print(f"[PROCESSOR] Schedule lookup failed: {e}")
+        return []
+
+# ─── DISCIPLINE DETECTION ──────────────────────────────────────────
+def detect_discipline(transcript_text, candidates):
+    """
+    1 candidate  → return directly, no LLM needed
+    2+ candidates → Qwen2.5 reads transcript and picks
+    0 candidates  → Qwen2.5 identifies from scratch
+    """
+    if len(candidates) == 1:
+        slot = candidates[0]
+        print(f"[PROCESSOR] Single candidate: {slot['discipline']}")
+        return slot["discipline"], slot["professor"]
+
+    if len(candidates) > 1:
+        discipline_list = ", ".join([c["discipline"] for c in candidates])
+        print(f"[PROCESSOR] Multiple candidates — asking Qwen2.5 to classify: {discipline_list}")
+        prompt = (
+            "Tu es un classificateur de cours de médecine. "
+            "Lis l'extrait de cours suivant et détermine à quelle matière il appartient "
+            "parmi les choix suivants: " + discipline_list + "\n\n"
+            "RÈGLE STRICTE: Réponds UNIQUEMENT avec le nom exact d'une des matières listées. "
+            "Un seul mot. Aucune explication.\n\n"
+            "Extrait:\n" + transcript_text[:3000]
+        )
+        try:
+            res = requests.post(OLLAMA_URL, json={
+                "model": OLLAMA_MODEL,
+                "prompt": prompt,
+                "stream": False
+            }, timeout=60)
+            answer = res.json().get("response", "").strip().lower()
+            answer = answer.split("\n")[0].strip()
+            answer = "".join(c for c in answer if c.isalnum())
+
+            for c in candidates:
+                if c["discipline"].lower() in answer or answer in c["discipline"].lower():
+                    print(f"[PROCESSOR] Qwen2.5 classified as: {c['discipline']}")
+                    return c["discipline"], c["professor"]
+
+            print(f"[PROCESSOR] Could not parse answer '{answer}', defaulting to first candidate.")
+            return candidates[0]["discipline"], candidates[0]["professor"]
+
+        except Exception as e:
+            print(f"[PROCESSOR] Classification failed: {e}. Using first candidate.")
+            return candidates[0]["discipline"], candidates[0]["professor"]
+
+    # No candidates — full AI fallback
+    print("[PROCESSOR] No schedule match. Qwen2.5 identifying discipline from scratch...")
     prompt = (
-        "Tu es un assistant chargé de nommer des fichiers de cours de médecine. Lis l'extrait suivant "
-        "et réponds UNIQUEMENT avec un nom de fichier respectant ce format exact :\n"
-        "coursename_maintopic_" + today + "\n\n"
-        "Règles :\n"
-        "- coursename: un seul mot, minuscules, sans espaces (ex: anatomie, histologie, physiologie)\n"
-        "- maintopic: 1-3 mots max, minuscules, séparés par des tirets (ex: cavite-abdominale, cycle-cardiaque)\n"
-        "- N'ajoute aucune explication, aucune introduction ni aucune ponctuation. Juste le nom du fichier.\n\n"
-        "Extrait :\n" + transcript_text[:2000]
+        "Tu es un classificateur de cours de médecine FMPC. "
+        "Lis l'extrait suivant et réponds UNIQUEMENT avec la matière correspondante "
+        "en un seul mot minuscule parmi: anatomie, bacteriologie, histologie, hematologie, "
+        "embryologie, immunologie, physiologie, biochimie.\n\n"
+        "Extrait:\n" + transcript_text[:3000]
     )
     try:
         res = requests.post(OLLAMA_URL, json={
@@ -28,16 +121,52 @@ def generate_label(transcript_text):
             "prompt": prompt,
             "stream": False
         }, timeout=60)
-        label = res.json().get("response", "").strip().lower()
-        label = label.split("\n")[0].split("_202")[0].split("_201")[0].split("_200")[0]
-        label = "".join(c for c in label if c.isalnum() or c in "-_")
-        if not label:
-            label = "lecture"
-        return f"{label}_{today}"
+        discipline = res.json().get("response", "").strip().lower()
+        discipline = discipline.split("\n")[0]
+        discipline = "".join(c for c in discipline if c.isalnum())
+        if not discipline:
+            discipline = "medecine"
+        print(f"[PROCESSOR] AI identified discipline: {discipline}")
+        return discipline, None
     except Exception as e:
-        print(f"[PROCESSOR] Labeling failed: {e}. Using fallback.")
-        return f"lecture_{today}"
+        print(f"[PROCESSOR] Full fallback failed: {e}")
+        return "medecine", None
 
+# ─── TOPIC LABEL ───────────────────────────────────────────────────
+def generate_topic(transcript_text, discipline):
+    prompt = (
+        "Tu es un assistant qui nomme des fichiers de cours de médecine. "
+        "La matière est: " + discipline + "\n"
+        "Lis l'extrait suivant et réponds UNIQUEMENT avec 1 à 3 mots décrivant "
+        "le sujet principal, en minuscules, séparés par des tirets "
+        "(ex: cavite-abdominale, coloration-gram, structure-bacterienne).\n"
+        "Aucune explication. Juste les mots.\n\n"
+        "Extrait:\n" + transcript_text[:2000]
+    )
+    try:
+        res = requests.post(OLLAMA_URL, json={
+            "model": OLLAMA_MODEL,
+            "prompt": prompt,
+            "stream": False
+        }, timeout=60)
+        topic = res.json().get("response", "").strip().lower()
+        topic = topic.split("\n")[0]
+        topic = "".join(c for c in topic if c.isalnum() or c == "-")
+        return topic if topic else "cours"
+    except Exception as e:
+        print(f"[PROCESSOR] Topic generation failed: {e}")
+        return "cours"
+
+def build_label(file_path, transcript_text):
+    today = datetime.now().strftime("%Y-%m-%d")
+    candidates = get_candidates_from_schedule(file_path)
+    discipline, professor = detect_discipline(transcript_text, candidates)
+    topic = generate_topic(transcript_text, discipline)
+    label = f"{discipline}_{topic}_{today}"
+    print(f"[PROCESSOR] Final label: {label}")
+    return label, discipline, professor
+
+# ─── TRANSCRIPT CLEANING ───────────────────────────────────────────
 def clean_transcript_chunked(transcript_text):
     paragraphs = transcript_text.split('\n\n')
     chunks_to_process = []
@@ -54,7 +183,6 @@ def clean_transcript_chunked(transcript_text):
         else:
             current_chunk.append(p)
             current_len += len(p)
-
     if current_chunk:
         chunks_to_process.append("\n\n".join(current_chunk))
 
@@ -89,8 +217,8 @@ def clean_transcript_chunked(transcript_text):
 
     return "\n\n".join(cleaned_paragraphs)
 
+# ─── MEDICAL CONTENT FILTER ────────────────────────────────────────
 def filter_transcript_chunked(transcript_text):
-    """Second pass — keep only actual medical content, strip professor small talk."""
     paragraphs = transcript_text.split('\n\n')
     chunks_to_process = []
     current_chunk = []
@@ -106,7 +234,6 @@ def filter_transcript_chunked(transcript_text):
         else:
             current_chunk.append(p)
             current_len += len(p)
-
     if current_chunk:
         chunks_to_process.append("\n\n".join(current_chunk))
 
@@ -118,11 +245,10 @@ def filter_transcript_chunked(transcript_text):
         print(f"[PROCESSOR]   Filtering chunk {i}/{total_chunks}...")
         prompt = (
             "Tu es un filtre de contenu médical pour la FMPC. "
-            "Voici un extrait de cours de médecine transcrit. "
             "Supprime UNIQUEMENT les passages non médicaux : bavardages, organisation du semestre, "
             "blagues, échanges avec les étudiants, commentaires personnels du professeur. "
-            "Conserve TOUT le contenu médical : définitions, schémas, anatomie, physiologie, "
-            "histologie, pathologie, biochimie, embryologie, bactériologie. "
+            "Conserve TOUT le contenu médical : définitions, anatomie, physiologie, "
+            "histologie, pathologie, biochimie, embryologie, bactériologie, immunologie, hématologie. "
             "Ne résume pas. Ne reformule pas. Ne rajoute rien. "
             "N'ajoute AUCUNE phrase d'introduction. "
             "Si un paragraphe entier est non médical, supprime-le complètement. "
@@ -146,6 +272,7 @@ def filter_transcript_chunked(transcript_text):
 
     return "\n\n".join(filtered_paragraphs)
 
+# ─── MAIN ──────────────────────────────────────────────────────────
 def main():
     print("[PROCESSOR] Starting...")
 
@@ -161,26 +288,25 @@ def main():
     with open(TMP_RESULT, "r", encoding="utf-8") as f:
         result = json.load(f)
 
-    raw_transcript   = result["transcript"]
-    language         = result["language"]
-    segment_count    = result["segment_count"]
-    paragraph_count  = result["paragraph_count"]
-    file_path        = result["file_path"]
+    raw_transcript  = result["transcript"]
+    language        = result["language"]
+    segment_count   = result["segment_count"]
+    paragraph_count = result["paragraph_count"]
+    file_path       = result["file_path"]
 
     print(f"[PROCESSOR] Loaded raw transcript — {segment_count} segments, {paragraph_count} paragraphs")
 
     # STEP 1: SPELLING + PHONETIC CORRECTION
-    print("[PROCESSOR] Step 1/5: Correcting phonetic medical errors with Qwen2.5:7b...")
+    print("[PROCESSOR] Step 1/5: Correcting phonetic medical errors...")
     cleaned_transcript = clean_transcript_chunked(raw_transcript)
 
     # STEP 2: MEDICAL CONTENT FILTER
     print("[PROCESSOR] Step 2/5: Filtering to medical content only...")
     filtered_transcript = filter_transcript_chunked(cleaned_transcript)
 
-    # STEP 3: GENERATE LABEL (from filtered version — cleaner signal)
-    print("[PROCESSOR] Step 3/5: Generating label...")
-    label = generate_label(filtered_transcript)
-    print(f"[PROCESSOR] Generated label: {label}")
+    # STEP 3: BUILD LABEL
+    print("[PROCESSOR] Step 3/5: Building label...")
+    label, discipline, professor = build_label(file_path, filtered_transcript)
 
     # STEP 4: SAVE BOTH VERSIONS
     print("[PROCESSOR] Step 4/5: Saving transcripts...")
@@ -188,34 +314,43 @@ def main():
     header_full = (
         f"TRANSCRIPT (FULL): {label}\n"
         f"Language: {language} | Segments: {segment_count} | Paragraphs: {paragraph_count}\n"
+        f"Discipline: {discipline or 'unknown'} | Professor: {professor or 'unknown'}\n"
         f"AI Corrector: {OLLAMA_MODEL}\n"
         + "=" * 60 + "\n\n"
     )
     header_filtered = (
         f"TRANSCRIPT (MEDICAL ONLY): {label}\n"
         f"Language: {language} | Segments: {segment_count} | Paragraphs: {paragraph_count}\n"
+        f"Discipline: {discipline or 'unknown'} | Professor: {professor or 'unknown'}\n"
         f"AI Corrector: {OLLAMA_MODEL} | Filter: medical-only\n"
         + "=" * 60 + "\n\n"
     )
 
-    # Full corrected transcript
     full_ssd  = os.path.join(TRANSCRIPTS, label + ".txt")
     full_hdd  = os.path.join(ARCHIVE_HDD, label + ".txt")
     with open(full_ssd, "w", encoding="utf-8") as f:
         f.write(header_full + cleaned_transcript)
     shutil.copy2(full_ssd, full_hdd)
-    print(f"[PROCESSOR] Full transcript saved: {full_ssd}")
+    print(f"[PROCESSOR] Full transcript → SSD + HDD")
 
-    # Filtered medical-only transcript
     clean_ssd = os.path.join(TRANSCRIPTS, label + "_clean.txt")
     clean_hdd = os.path.join(ARCHIVE_HDD, label + "_clean.txt")
     with open(clean_ssd, "w", encoding="utf-8") as f:
         f.write(header_filtered + filtered_transcript)
     shutil.copy2(clean_ssd, clean_hdd)
-    print(f"[PROCESSOR] Filtered transcript saved: {clean_ssd}")
+    print(f"[PROCESSOR] Filtered transcript → SSD + HDD")
 
-    # STEP 5: ARCHIVE AUDIO AS OPUS
-    print("[PROCESSOR] Step 5/5: Archiving audio...")
+    # STEP 5: AUTO-INGEST TRANSCRIPT INTO CHROMADB
+    print("[PROCESSOR] Step 5/5: Ingesting transcript into ChromaDB...")
+    try:
+        from ingest_slides import ingest_transcript
+        ingest_transcript(full_ssd, discipline or "unknown", label, professor)
+    except Exception as e:
+        print(f"[PROCESSOR] WARNING: ChromaDB ingest failed ({e}). Transcript saved but not indexed.")
+        print("[PROCESSOR] Run ingest_slides.py manually to index later.")
+
+    # STEP 6: ARCHIVE AUDIO AS OPUS
+    print("[PROCESSOR] Step 6/6: Archiving audio...")
     out_opus = os.path.join(ARCHIVE_HDD, label + ".opus")
     result_ffmpeg = subprocess.run([
         "ffmpeg", "-i", file_path,
@@ -229,7 +364,7 @@ def main():
     else:
         orig_mb = os.path.getsize(file_path) / 1e6
         opus_mb = os.path.getsize(out_opus) / 1e6
-        print(f"[PROCESSOR] Audio archived: {orig_mb:.1f}MB -> {opus_mb:.1f}MB ({100*(1-opus_mb/orig_mb):.0f}% saved)")
+        print(f"[PROCESSOR] Audio archived: {orig_mb:.1f}MB → {opus_mb:.1f}MB ({100*(1-opus_mb/orig_mb):.0f}% saved)")
 
     # CLEANUP
     os.remove(file_path)
@@ -238,6 +373,9 @@ def main():
     if os.path.exists(TMP_RESULT):
         os.remove(TMP_RESULT)
     print(f"[PROCESSOR] ─── COMPLETE: {label} ───")
+
+if __name__ == "__main__":
+    main()
 
 if __name__ == "__main__":
     main()
