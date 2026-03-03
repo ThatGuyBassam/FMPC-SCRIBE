@@ -12,7 +12,7 @@ TMP_RESULT  = os.path.join(BASE_DIR, "temp_result.json")
 
 PYTHON      = r"C:\Users\GAMER\AppData\Local\Programs\Python\Python311\python.exe"
 TRANSCRIBER = os.path.join(BASE_DIR, "transcriber.py")
-LABELER     = os.path.join(BASE_DIR, "labeler.py")
+PROCESSOR   = os.path.join(BASE_DIR, "processor.py") # <-- Updated to processor.py
 
 SHUTDOWN_AFTER_MINUTES = 30
 SUPPORTED = ('.m4a', '.mp3', '.wav', '.aac', '.ogg', '.flac')
@@ -55,7 +55,7 @@ def process_file(file_path, name):
     log.info("Launching transcriber process...")
     result = subprocess.run(
         [PYTHON, TRANSCRIBER, file_path],
-        capture_output=False  # prints directly to CMD for visibility
+        capture_output=False
     )
 
     if result.returncode != 0:
@@ -66,16 +66,16 @@ def process_file(file_path, name):
         log.error("Transcriber finished but temp_result.json not found.")
         return
 
-    log.info("Transcriber complete. Launching labeler process...")
+    log.info("Transcriber complete. Launching processor...")
 
-    # Run labeler in its own process — no GPU needed
+    # <-- Updated to call the new processor variable
     result2 = subprocess.run(
-        [PYTHON, LABELER],
+        [PYTHON, PROCESSOR],
         capture_output=False
     )
 
     if result2.returncode != 0:
-        log.error(f"Labeler failed with exit code {result2.returncode}")
+        log.error(f"Processor failed with exit code {result2.returncode}")
         return
 
     log.info(f"─── COMPLETE: {name} ───────────────────────────")
@@ -136,4 +136,3 @@ while True:
         log.error(f"Watchdog error: {e}")
 
     time.sleep(10)
-
