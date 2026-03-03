@@ -99,6 +99,15 @@ def clean_transcript_chunked(transcript_text):
 
 def main():
     print("[PROCESSOR] Starting...")
+    # Force clear any residual VRAM from the transcriber before loading Qwen2.5 (God, I hope this works)
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            print("[PROCESSOR] VRAM cleared.")
+    except Exception:
+        pass
 
     # READ TRANSCRIPT FROM TEMP FILE
     with open(TMP_RESULT, "r", encoding="utf-8") as f:
