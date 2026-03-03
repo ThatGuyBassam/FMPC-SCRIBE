@@ -1,6 +1,6 @@
 # FMPC Scribe
 
-Personal project I built to stop wasting time relistening to 2-hour lectures — records, transcribes, cleans, and archives medical lectures fully locally on my computer, woken remotely via a Raspberry Pi from my phone. No cloud, no subscriptions, just my GPU doing the work while I do other things.
+Personal project I built to stop wasting time relistening to 2-hour lectures — records, transcribes, cleans, and archives medical lectures fully locally on my computer, woken remotely via a Raspberry Pi from my phone. No cloud, no subscriptions, just my GPU doing the work while I focus on other things.
 
 ## How it works
 
