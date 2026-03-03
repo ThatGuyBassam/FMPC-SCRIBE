@@ -18,8 +18,8 @@ def generate_label(transcript_text):
         "coursename_maintopic_" + today + "\n\n"
         "Règles :\n"
         "- coursename: un seul mot, minuscules, sans espaces (ex: anatomie, histologie, physiologie)\n"
-        "- maintopic: 1-3 mots max, minuscules, séparés par des tirets (ex: cavite-abdominale, cycle-cardiaque)\n"
-        "- N'ajoute aucune explication, introduction ou ponctuation. Juste le nom du fichier.\n\n"
+        "- maintopic: 1-3 mots max, minuscules, séparés par des tirets (ex: cavité-abdominale, cycle-cardiaque)\n"
+        "- N'ajoute aucune explication, aucune introduction ni aucune ponctuation. Juste le nom du fichier.\n\n"
         "Extrait :\n" + transcript_text[:2000]
     )
     try:
