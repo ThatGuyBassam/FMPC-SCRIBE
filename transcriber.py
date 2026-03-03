@@ -24,6 +24,7 @@ NOISE_REDUCTION = 0.75
 PARAGRAPH_PAUSE = 2.5
 MIN_CHUNK_SEC   = 0.5
 BATCH_SIZE      = 1
+MODEL_RELOAD_EVERY = 10  # Reload model every N batches to prevent VRAM leak
 
 MEDICAL_PROMPT = (
     "French. Cours de médecine, FMPC Maroc. Accent marocain, ignorez la darija. "
@@ -113,6 +114,7 @@ def filter_repetitions(text: str) -> str:
     # Multi-word phrase repetition e.g. "Sous-titrage MFP. Sous-titrage MFP..."
     cleaned = re.sub(r'(.{8,80}?)\s*(?:\1\s*){2,}', r'\1 ', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'  +', ' ', cleaned).strip()
+    # Strip prompt echo
     if any(phrase in cleaned for phrase in ["calibrer", "phonétique", "FMPC Maroc", "darija", "exhaustive"]):
         return ""
     words = cleaned.lower().split()
@@ -121,25 +123,37 @@ def filter_repetitions(text: str) -> str:
         if most_common / len(words) > 0.70:
             return ""
     return cleaned
-# ─── STEP 3: TRANSCRIPTION ─────────────────────────────────────────
-print("[TRANSCRIBER] Step 3/3: Loading Qwen3-ASR-1.7B on CUDA...")
 
-model = Qwen3ASRModel.from_pretrained(
-    "Qwen/Qwen3-ASR-1.7B",
-    dtype=torch.bfloat16,
-    device_map="cuda:0",
-)
-print("[TRANSCRIBER] Model loaded. Transcribing...")
+# ─── STEP 3: TRANSCRIPTION ─────────────────────────────────────────
+print("[TRANSCRIBER] Step 3/3: Transcribing...")
+
+def load_model():
+    print("[TRANSCRIBER] Loading Qwen3-ASR-1.7B on CUDA...")
+    m = Qwen3ASRModel.from_pretrained(
+        "Qwen/Qwen3-ASR-1.7B",
+        dtype=torch.bfloat16,
+        device_map="cuda:0",
+    )
+    print("[TRANSCRIBER] Model loaded.")
+    return m
 
 paragraphs        = []
 language_detected = "French"
 total_chunks      = len(chunk_bounds)
+model             = None
 
 for batch_start in range(0, total_chunks, BATCH_SIZE):
-    batch_indices = chunk_bounds[batch_start : batch_start + BATCH_SIZE]
     batch_num     = batch_start // BATCH_SIZE + 1
     total_batches = (total_chunks + BATCH_SIZE - 1) // BATCH_SIZE
 
+    # Reload model every MODEL_RELOAD_EVERY batches to prevent VRAM accumulation
+    if model is None or batch_num % MODEL_RELOAD_EVERY == 1:
+        del model
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        model = load_model()
+
+    batch_indices = chunk_bounds[batch_start : batch_start + BATCH_SIZE]
     print(f"[TRANSCRIBER]   Batch {batch_num}/{total_batches} "
           f"({len(batch_indices)} chunks)...")
 
@@ -175,6 +189,7 @@ for batch_start in range(0, total_chunks, BATCH_SIZE):
             language_detected = result.language
 
     torch.cuda.empty_cache()
+    torch.cuda.synchronize()
 
 print(f"[TRANSCRIBER] Transcription complete — {len(paragraphs)} paragraphs kept.")
 
