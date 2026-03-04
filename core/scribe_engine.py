@@ -8,11 +8,11 @@ TRANSCRIPTS = os.path.join(BASE_DIR, "NOTES_Transcripts")
 ARCHIVE_HDD = r"D:\FMPC_Audio_Archive\Medical"
 LOG_PATH    = os.path.join(BASE_DIR, "scribe_log.txt")
 TMP_WAV     = os.path.join(BASE_DIR, "temp_processing.wav")
-TMP_RESULT  = os.path.join(BASE_DIR, "temp_result.json")
+TMP_RESULT  = os.path.join(BASE_DIR, "temp_result.tmp")
 
 PYTHON      = r"C:\Users\GAMER\AppData\Local\Programs\Python\Python311\python.exe"
 TRANSCRIBER = os.path.join(BASE_DIR, "transcriber.py")
-PROCESSOR   = os.path.join(BASE_DIR, "processor.py") # <-- Updated to processor.py
+PROCESSOR   = os.path.join(BASE_DIR, "processor.py")
 
 SHUTDOWN_AFTER_MINUTES = 30
 SUPPORTED = ('.m4a', '.mp3', '.wav', '.aac', '.ogg', '.flac')
@@ -51,7 +51,12 @@ def get_idle_seconds():
 def process_file(file_path, name):
     log.info(f"─── BEGIN: {name} ───────────────────────────")
 
-    # Run transcriber in its own process
+    # Safety check — file must still exist
+    if not os.path.exists(file_path):
+        log.warning(f"File no longer exists, skipping: {name}")
+        return
+
+    # Run transcriber
     log.info("Launching transcriber process...")
     result = subprocess.run(
         [PYTHON, TRANSCRIBER, file_path],
@@ -63,12 +68,11 @@ def process_file(file_path, name):
         return
 
     if not os.path.exists(TMP_RESULT):
-        log.error("Transcriber finished but temp_result.json not found.")
+        log.error("Transcriber finished but temp_result.tmp not found.")
         return
 
     log.info("Transcriber complete. Launching processor...")
 
-    # <-- Updated to call the new processor variable
     result2 = subprocess.run(
         [PYTHON, PROCESSOR],
         capture_output=False
@@ -81,7 +85,6 @@ def process_file(file_path, name):
     log.info(f"─── COMPLETE: {name} ───────────────────────────")
 
 # ─── WATCHDOG LOOP ─────────────────────────────────────────────────
-
 log.info("=" * 55)
 log.info("FMPC SCRIBE ENGINE v3.0 — STARTED")
 log.info(f"Watching: {INBOX}")
@@ -97,12 +100,26 @@ while True:
 
         if files:
             idle_since = None
-            for fname in files:
-                fpath = os.path.join(INBOX, fname)
+
+            # Process ONE file per cycle then re-scan
+            # This prevents double-processing when multiple files are present
+            fname = files[0]
+            fpath = os.path.join(INBOX, fname)
+
+            # Skip if already being processed (temp_result exists from another run)
+            if os.path.exists(TMP_RESULT):
+                log.warning("temp_result.tmp already exists — previous run may still be active. Waiting...")
+            else:
                 try:
                     process_file(fpath, fname)
                 except Exception as e:
                     log.error(f"FAILED [{fname}]: {e}", exc_info=True)
+                    # Clean up temp files on failure
+                    for tmp in [TMP_WAV, TMP_RESULT]:
+                        if os.path.exists(tmp):
+                            os.remove(tmp)
+                            log.info(f"Cleaned up {os.path.basename(tmp)} after failure.")
+
         else:
             if idle_since is None:
                 idle_since = time.time()
