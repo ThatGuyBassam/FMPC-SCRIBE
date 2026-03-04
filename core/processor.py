@@ -25,11 +25,35 @@ def get_candidates_from_schedule(file_path):
         sched = load_schedule()
         all_slots = sched["schedule"]
 
-        file_ctime = os.path.getctime(file_path)
-        file_dt = datetime.fromtimestamp(file_ctime)
-        file_date_str = file_dt.strftime("%Y-%m-%d")
+        # Try to read recording date from audio metadata via FFmpeg
+        # Falls back to file creation time if metadata is unavailable
+        file_dt = None
+        try:
+            result = subprocess.run(
+                ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", file_path],
+                capture_output=True, text=True, timeout=10
+            )
+            info = json.loads(result.stdout)
+            tags = info.get("format", {}).get("tags", {})
+            # Phone recordings typically store date in these tags
+            for key in ["creation_time", "date", "DATE", "CREATION_TIME"]:
+                if key in tags:
+                    raw = tags[key]
+                    # Handle formats: "2026-03-02T08:30:00.000000Z" or "2026-03-02"
+                    raw = raw[:19].replace("T", " ")
+                    file_dt = datetime.strptime(raw[:16], "%Y-%m-%d %H:%M")
+                    print(f"[PROCESSOR] Recording date from metadata: {file_dt.strftime('%Y-%m-%d %H:%M')}")
+                    break
+        except Exception as e:
+            print(f"[PROCESSOR] Metadata read failed ({e}), using file creation time.")
 
-        print(f"[PROCESSOR] Audio recorded: {file_dt.strftime('%Y-%m-%d %H:%M')}")
+        if file_dt is None:
+            file_ctime = os.path.getctime(file_path)
+            file_dt = datetime.fromtimestamp(file_ctime)
+            print(f"[PROCESSOR] Audio recorded (file ctime): {file_dt.strftime('%Y-%m-%d %H:%M')}")
+
+        file_date_str = file_dt.strftime("%Y-%m-%d")
+        print(f"[PROCESSOR] Using date: {file_date_str}")
 
         day_slots = [s for s in all_slots if s["date"] == file_date_str]
         if not day_slots:
