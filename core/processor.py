@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 # ─── CONFIG ────────────────────────────────────────────────────────
 TRANSCRIPTS   = r"C:\FMPC_Scribe\NOTES_Transcripts"
 ARCHIVE_HDD   = r"D:\FMPC_Audio_Archive\Medical"
-TMP_RESULT    = r"C:\FMPC_Scribe\temp_result.json"
+TMP_RESULT    = r"C:\FMPC_Scribe\temp_result.tmp"
 TMP_WAV       = r"C:\FMPC_Scribe\temp_processing.wav"
 SCHEDULE_FILE = r"C:\FMPC_Scribe\schedule.json"
 OLLAMA_URL    = "http://localhost:11434/api/generate"
