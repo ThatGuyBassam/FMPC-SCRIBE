@@ -205,3 +205,13 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+chroma_db/
+slides/
+NOTES_Transcripts/
+*.opus
+temp_*.tmp
+temp_*.wav
+__pycache__/
+schedule.json
+scribe_log.txt
