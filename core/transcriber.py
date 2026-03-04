@@ -1,4 +1,4 @@
-# transcriber.py — FMPC Scribe v3.4
+# transcriber.py — FMPC Scribe v3.5
 # Engine: Qwen3-ASR-1.7B
 # Runs as an isolated subprocess via scribe_engine.py.
 # MUST end with os._exit(0) — bypasses Python/CUDA cleanup to prevent
@@ -8,6 +8,8 @@ import os
 import sys
 import json
 import re
+import gc
+import time
 import torch
 import librosa
 import subprocess
@@ -15,16 +17,18 @@ import noisereduce as nr
 import soundfile as sf
 from qwen_asr import Qwen3ASRModel
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"  # Skip HuggingFace network check
 
 # ─── CONFIG ────────────────────────────────────────────────────────
-TMP_WAV         = r"C:\FMPC_Scribe\temp_processing.wav"
-TMP_RESULT      = r"C:\FMPC_Scribe\temp_result.json"
-TARGET_SR       = 16000
-NOISE_REDUCTION = 0.75
-PARAGRAPH_PAUSE = 2.5
-MIN_CHUNK_SEC   = 0.5
-BATCH_SIZE      = 1
-MODEL_RELOAD_EVERY = 10  # Reload model every N batches to prevent VRAM leak
+TMP_WAV            = r"C:\FMPC_Scribe\temp_processing.wav"
+TMP_RESULT         = r"C:\FMPC_Scribe\temp_result.tmp"
+TARGET_SR          = 16000
+NOISE_REDUCTION    = 0.75
+PARAGRAPH_PAUSE    = 2.5
+MIN_CHUNK_SEC      = 0.5
+MAX_CHUNK_SEC      = 60.0  # Split any chunk longer than this into equal pieces
+BATCH_SIZE         = 1
+MODEL_RELOAD_EVERY = 5  # Reload every 5 batches (was 10)
 
 MEDICAL_PROMPT = (
     "French. Cours de médecine, FMPC Maroc. Accent marocain, ignorez la darija. "
@@ -85,7 +89,7 @@ intervals = librosa.effects.split(
 )
 
 chunk_bounds = []
-chunk_start = 0
+chunk_start  = 0
 
 for i in range(1, len(intervals)):
     gap_start = intervals[i - 1][1]
@@ -103,18 +107,30 @@ final_dur = (len(audio_clean) - chunk_start) / TARGET_SR
 if final_dur >= MIN_CHUNK_SEC:
     chunk_bounds.append((chunk_start, len(audio_clean)))
 
-print(f"[TRANSCRIBER] Found {len(chunk_bounds)} paragraph chunks.")
+# Split any chunk that exceeds MAX_CHUNK_SEC into equal sub-chunks
+split_bounds = []
+for start, end in chunk_bounds:
+    dur = (end - start) / TARGET_SR
+    if dur > MAX_CHUNK_SEC:
+        n_parts = int(dur / MAX_CHUNK_SEC) + 1
+        part_len = (end - start) // n_parts
+        for p in range(n_parts):
+            p_start = start + p * part_len
+            p_end   = start + (p + 1) * part_len if p < n_parts - 1 else end
+            split_bounds.append((p_start, p_end))
+    else:
+        split_bounds.append((start, end))
+
+chunk_bounds = split_bounds
+print(f"[TRANSCRIBER] Found {len(chunk_bounds)} paragraph chunks (after splitting long segments).")
 
 # ─── REPETITION FILTER ─────────────────────────────────────────────
 def filter_repetitions(text: str) -> str:
     if not text:
         return text
-    # Single word repetition
     cleaned = re.sub(r'\b(\w[\w\'-]*[.,!?]?)\s+(?:\1\s*){3,}', r'\1 ', text, flags=re.IGNORECASE | re.UNICODE)
-    # Multi-word phrase repetition e.g. "Sous-titrage MFP. Sous-titrage MFP..."
     cleaned = re.sub(r'(.{8,80}?)\s*(?:\1\s*){2,}', r'\1 ', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'  +', ' ', cleaned).strip()
-    # Strip prompt echo
     if any(phrase in cleaned for phrase in ["calibrer", "phonétique", "FMPC Maroc", "darija", "exhaustive"]):
         return ""
     words = cleaned.lower().split()
@@ -124,9 +140,18 @@ def filter_repetitions(text: str) -> str:
             return ""
     return cleaned
 
-# ─── STEP 3: TRANSCRIPTION ─────────────────────────────────────────
-print("[TRANSCRIBER] Step 3/3: Transcribing...")
+# ─── VRAM CLEANUP ──────────────────────────────────────────────────
+def purge_vram(model):
+    """Aggressively free all VRAM before reloading the model."""
+    del model
+    gc.collect()
+    torch.cuda.empty_cache()
+    torch.cuda.synchronize()
+    time.sleep(1)  # Give CUDA a moment to fully release
+    gc.collect()
+    torch.cuda.empty_cache()
 
+# ─── MODEL LOADER ──────────────────────────────────────────────────
 def load_model():
     print("[TRANSCRIBER] Loading Qwen3-ASR-1.7B on CUDA...")
     m = Qwen3ASRModel.from_pretrained(
@@ -137,6 +162,9 @@ def load_model():
     print("[TRANSCRIBER] Model loaded.")
     return m
 
+# ─── STEP 3: TRANSCRIPTION ─────────────────────────────────────────
+print("[TRANSCRIBER] Step 3/3: Transcribing...")
+
 paragraphs        = []
 language_detected = "French"
 total_chunks      = len(chunk_bounds)
@@ -146,34 +174,53 @@ for batch_start in range(0, total_chunks, BATCH_SIZE):
     batch_num     = batch_start // BATCH_SIZE + 1
     total_batches = (total_chunks + BATCH_SIZE - 1) // BATCH_SIZE
 
-    # Reload model every MODEL_RELOAD_EVERY batches to prevent VRAM accumulation
+    # Reload model every MODEL_RELOAD_EVERY batches
     if model is None or batch_num % MODEL_RELOAD_EVERY == 1:
-        del model
-        torch.cuda.empty_cache()
-        torch.cuda.synchronize()
+        purge_vram(model)
         model = load_model()
 
     batch_indices = chunk_bounds[batch_start : batch_start + BATCH_SIZE]
-    print(f"[TRANSCRIBER]   Batch {batch_num}/{total_batches} "
-          f"({len(batch_indices)} chunks)...")
+    print(f"[TRANSCRIBER]   Batch {batch_num}/{total_batches} ({len(batch_indices)} chunks)...")
 
     batch_audio = [(audio_clean[s:e], TARGET_SR) for s, e in batch_indices]
 
+    # ── Try with medical context ──
     try:
         results = model.transcribe(
             audio=batch_audio,
-            language="French",
+            l                         anguage="French",
             context=MEDICAL_PROMPT,
         )
+    except torch.cuda.OutOfMemoryError as e:
+        print(f"[TRANSCRIBER]   OOM on batch {batch_num} — purging VRAM and retrying...")
+        purge_vram(model)
+        model = load_model()
+        try:
+            results = model.transcribe(
+                audio=batch_audio,
+                language="French",
+                context=MEDICAL_PROMPT,
+            )
+        except torch.cuda.OutOfMemoryError:
+            print(f"[TRANSCRIBER]   OOM again — trying without context...")
+            try:
+                results = model.transcribe(
+                    audio=batch_audio,
+                    language="French",
+                )
+            except Exception as e3:
+                print(f"[TRANSCRIBER]   Batch {batch_num} failed completely — skipping.")
+                torch.cuda.empty_cache()
+                continue
     except Exception as e:
-        print(f"[TRANSCRIBER]   WARNING: Batch {batch_num} failed — {e}. Trying without context...")
+        print(f"[TRANSCRIBER]   Batch {batch_num} failed — {e}. Trying without context...")
         try:
             results = model.transcribe(
                 audio=batch_audio,
                 language="French",
             )
         except Exception as e2:
-            print(f"[TRANSCRIBER]   WARNING: Batch {batch_num} failed completely — {e2}. Skipping.")
+            print(f"[TRANSCRIBER]   Batch {batch_num} failed completely — skipping.")
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
             continue
@@ -199,7 +246,7 @@ transcript = "\n\n".join(paragraphs)
 if not transcript.strip():
     print("[TRANSCRIBER] WARNING: Transcript is empty — check audio quality.")
 
-# ─── SAVE temp_result.json ─────────────────────────────────────────
+# ─── SAVE temp_result.tmp ─────────────────────────────────────────
 result_payload = {
     "transcript":           transcript,
     "language":             language_detected,
@@ -219,3 +266,4 @@ print(f"[TRANSCRIBER] Done. {len(paragraphs)} paragraphs / {len(transcript)} cha
 # DO NOT replace with sys.exit() — os._exit() bypasses Python/CUDA
 # cleanup and prevents the 0xC0000005 Access Violation on Windows.
 os._exit(0)
+
