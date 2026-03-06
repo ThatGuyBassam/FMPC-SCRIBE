@@ -642,6 +642,29 @@ html, body {
   letter-spacing: 0.5px;
 }
 
+.correction-quote {
+  padding: 10px 14px;
+  background: var(--cyan-dim);
+  border: 1px solid rgba(34,211,238,0.2);
+  border-radius: var(--radius);
+  font-size: 0.82rem;
+  color: var(--text-2);
+  line-height: 1.55;
+  font-style: italic;
+}
+
+.correction-quote .corr-label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--cyan);
+  font-weight: 500;
+  display: block;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-style: normal;
+}
+
 /* ── EXAMS ──────────────────────────────────────────────────────── */
 .exam-selector {
   display: grid;
@@ -830,6 +853,61 @@ html, body {
   line-height: 1.8;
 }
 
+/* ── CONFIDENCE CHECKBOX ────────────────────────────────────────── */
+.confidence-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  width: fit-content;
+}
+.confidence-row label {
+  font-size: 0.8rem;
+  color: var(--text-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+}
+.confidence-row input[type="checkbox"] {
+  width: 14px; height: 14px;
+  accent-color: var(--yellow);
+  cursor: pointer;
+}
+.tag-weak { background: var(--red-dim); color: var(--red); border-color: rgba(248,113,113,0.25); }
+.tag-unsure { background: var(--yellow-dim); color: var(--yellow); border-color: rgba(251,191,36,0.25); }
+
+.timeline-hit {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  margin-bottom: 10px;
+  transition: border-color 0.15s;
+}
+.timeline-hit:hover { border-color: var(--border-v); }
+.timeline-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.timeline-text { font-size: 0.88rem; color: var(--text-2); line-height: 1.65; }
+.timeline-text mark { background: rgba(139,92,246,0.25); color: var(--text-1); border-radius: 3px; padding: 0 2px; }
+
+.gap-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px 20px; margin-bottom: 12px; }
+.gap-section h4 { font-family: var(--font-display); font-size: 0.9rem; font-weight: 700; margin-bottom: 12px; }
+.gap-item { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 0.87rem; color: var(--text-2); }
+.gap-item:last-child { border-bottom: none; }
+
+.block-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 20px; margin-bottom: 10px; display: flex; align-items: center; gap: 16px; cursor: pointer; transition: all 0.15s; }
+.block-card:hover { border-color: var(--border-v); }
+.block-card.selected { border-color: var(--accent); background: var(--accent-dim); }
+.urgency-bar { width: 6px; border-radius: 3px; flex-shrink: 0; align-self: stretch; }
+.urgency-high { background: var(--red); }
+.urgency-medium { background: var(--yellow); }
+.urgency-low { background: var(--green); }
+
 /* ── TOAST ──────────────────────────────────────────────────────── */
 .toast {
   position: fixed;
@@ -900,6 +978,21 @@ html, body {
       <div class="nav-item" data-page="exams">
         <span class="nav-icon">📚</span> Examens
       </div>
+      <div class="nav-item" data-page="bank">
+        <span class="nav-icon">🗃️</span> Banque QCM
+      </div>
+      <div class="nav-item" data-page="weak">
+        <span class="nav-icon">🎯</span> Points Faibles
+      </div>
+      <div class="nav-item" data-page="timeline">
+        <span class="nav-icon">🔍</span> Timeline
+      </div>
+      <div class="nav-item" data-page="gaps">
+        <span class="nav-icon">⚡</span> Lacunes
+      </div>
+      <div class="nav-item" data-page="preexam">
+        <span class="nav-icon">🏆</span> Pré-Examen
+      </div>
     </nav>
 
     <div class="sidebar-filters">
@@ -962,10 +1055,19 @@ html, body {
         <div class="page-sub">15 questions générées · Système TOR</div>
       </div>
       <div class="content">
+        <div class="input-row" style="margin-bottom:8px">
+          <select id="qcm-course-disc" style="background:var(--surface);border:1px solid var(--border);color:var(--text-1);padding:10px 14px;border-radius:var(--radius);font-size:0.88rem;font-family:var(--font-body);outline:none;cursor:pointer;min-width:140px;transition:border-color .15s">
+            <option value="">Toutes les matières</option>
+          </select>
+          <select id="qcm-course-file" style="background:var(--surface);border:1px solid var(--border);color:var(--text-1);padding:10px 14px;border-radius:var(--radius);font-size:0.88rem;font-family:var(--font-body);outline:none;cursor:pointer;flex:1;transition:border-color .15s">
+            <option value="">Cours aléatoire</option>
+          </select>
+        </div>
         <div class="input-row">
           <input class="input-field" id="qcm-topic" type="text"
             placeholder="Sujet (optionnel) — ex: capsule bactérienne..." />
           <button class="btn btn-primary" id="qcm-generate">Générer 15 QCM</button>
+          <button class="btn btn-ghost" id="qcm-save" style="display:none">💾 Sauvegarder</button>
           <button class="btn btn-ghost" id="qcm-reset">↺</button>
         </div>
 
@@ -1058,6 +1160,154 @@ py -3.11 ingest_exams.py</code>
       </div>
     </div>
 
+    <!-- ── BANK ──────────────────────────────────────────────── -->
+    <div class="panel" id="panel-bank">
+      <div class="topbar">
+        <div class="page-title">Banque QCM</div>
+        <div class="page-sub">Questions générées et sauvegardées · Sans répétition</div>
+      </div>
+      <div class="content">
+        <div id="bank-list-view">
+          <div class="loading-row" id="bank-loading" style="padding:16px 0">
+            <span class="spinner"></span>
+            <span>Chargement...</span>
+          </div>
+          <div id="bank-sessions"></div>
+          <div class="empty-state" id="bank-empty" style="display:none">
+            <div class="icon">🗃️</div>
+            <p>Aucune session sauvegardée.<br>Générez des QCMs et cliquez <strong>Sauvegarder</strong>.</p>
+          </div>
+        </div>
+        <div id="bank-practice-view" style="display:none">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+            <button class="btn btn-ghost" id="bank-back">← Retour</button>
+            <span style="font-family:var(--font-display);font-size:1rem;font-weight:700" id="bank-practice-title"></span>
+          </div>
+          <div class="score-bar" id="bank-score-bar" style="display:flex">
+            <div class="score-stat">
+              <span class="val" id="bank-answered-count">0/0</span>
+              <span class="lbl">Répondues</span>
+            </div>
+            <div class="score-stat">
+              <span class="val" id="bank-correct-count" style="color:var(--green)">0</span>
+              <span class="lbl">Correctes</span>
+            </div>
+            <div class="score-stat">
+              <span class="val" id="bank-pct">0%</span>
+              <span class="lbl">Score</span>
+            </div>
+            <div class="progress-wrap">
+              <div class="progress-fill" id="bank-progress"></div>
+            </div>
+          </div>
+          <div id="bank-questions"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── WEAK POINTS ─────────────────────────────────────────── -->
+    <div class="panel" id="panel-weak">
+      <div class="topbar">
+        <div class="page-title">Points Faibles</div>
+        <div class="page-sub">Questions ratées ou incertaines · Entraînement ciblé</div>
+      </div>
+      <div class="content">
+        <div class="input-row" style="margin-bottom:16px">
+          <select id="weak-disc" style="background:var(--surface);border:1px solid var(--border);color:var(--text-1);padding:10px 14px;border-radius:var(--radius);font-size:0.88rem;font-family:var(--font-body);outline:none;cursor:pointer;min-width:160px">
+            <option value="Toutes">Toutes les matières</option>
+          </select>
+          <button class="btn btn-primary" id="weak-load">Charger mes points faibles</button>
+          <button class="btn btn-ghost" id="weak-practice" style="display:none">🎯 S'entraîner sur ces questions</button>
+        </div>
+        <div class="loading-row" id="weak-loading"><span class="spinner"></span><span>Analyse...</span></div>
+        <div id="weak-stats" style="display:none" class="card" style="margin-bottom:16px"></div>
+        <div id="weak-list"></div>
+        <div id="weak-practice-wrap" style="display:none">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+            <button class="btn btn-ghost" id="weak-back">← Retour</button>
+            <span style="font-family:var(--font-display);font-size:1rem;font-weight:700">Session Points Faibles</span>
+          </div>
+          <div class="score-bar" style="display:flex;margin-bottom:16px">
+            <div class="score-stat"><span class="val" id="weak-answered">0/0</span><span class="lbl">Répondues</span></div>
+            <div class="score-stat"><span class="val" id="weak-correct-v" style="color:var(--green)">0</span><span class="lbl">Correctes</span></div>
+            <div class="score-stat"><span class="val" id="weak-pct-v">0%</span><span class="lbl">Score</span></div>
+            <div class="progress-wrap"><div class="progress-fill" id="weak-progress"></div></div>
+          </div>
+          <div id="weak-questions"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TIMELINE ──────────────────────────────────────────────── -->
+    <div class="panel" id="panel-timeline">
+      <div class="topbar">
+        <div class="page-title">Timeline des Cours</div>
+        <div class="page-sub">Retrouvez n'importe quel concept à travers tous vos cours</div>
+      </div>
+      <div class="content">
+        <div class="input-row">
+          <input class="input-field" id="timeline-input" type="text"
+            placeholder="Ex: capsule bactérienne, péritoine, hémoglobine..." />
+          <select id="timeline-disc" style="background:var(--surface);border:1px solid var(--border);color:var(--text-1);padding:10px 14px;border-radius:var(--radius);font-size:0.88rem;font-family:var(--font-body);outline:none;cursor:pointer;min-width:140px">
+            <option value="Toutes">Toutes</option>
+          </select>
+          <button class="btn btn-primary" id="timeline-search-btn">Rechercher</button>
+        </div>
+        <div class="loading-row" id="timeline-loading"><span class="spinner"></span><span>Recherche...</span></div>
+        <div id="timeline-results"></div>
+      </div>
+    </div>
+
+    <!-- ── GAPS ──────────────────────────────────────────────────── -->
+    <div class="panel" id="panel-gaps">
+      <div class="topbar">
+        <div class="page-title">Détection de Lacunes</div>
+        <div class="page-sub">Compare slides vs transcriptions · Trouve ce qui manque</div>
+      </div>
+      <div class="content">
+        <div class="input-row" style="margin-bottom:16px">
+          <select id="gaps-disc" style="background:var(--surface);border:1px solid var(--border);color:var(--text-1);padding:10px 14px;border-radius:var(--radius);font-size:0.88rem;font-family:var(--font-body);outline:none;cursor:pointer;flex:1">
+            <option value="">— Choisir une matière —</option>
+          </select>
+          <button class="btn btn-primary" id="gaps-analyze">Analyser</button>
+        </div>
+        <div class="loading-row" id="gaps-loading"><span class="spinner"></span><span>Analyse en cours (peut prendre 1-2 min)...</span></div>
+        <div id="gaps-results"></div>
+      </div>
+    </div>
+
+    <!-- ── PRE-EXAM ──────────────────────────────────────────────── -->
+    <div class="panel" id="panel-preexam">
+      <div class="topbar">
+        <div class="page-title">Mode Pré-Examen</div>
+        <div class="page-sub">Sessions ciblées basées sur vos examens · Points faibles en priorité</div>
+      </div>
+      <div class="content">
+        <div id="preexam-select-view">
+          <div class="loading-row" id="preexam-loading"><span class="spinner"></span><span>Chargement...</span></div>
+          <div id="preexam-blocks"></div>
+          <div style="margin-top:16px;display:none" id="preexam-start-row">
+            <button class="btn btn-primary" id="preexam-generate" style="width:100%">
+              🏆 Générer ma session pré-examen
+            </button>
+          </div>
+        </div>
+        <div id="preexam-practice-view" style="display:none">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+            <button class="btn btn-ghost" id="preexam-back">← Retour</button>
+            <span style="font-family:var(--font-display);font-size:1rem;font-weight:700" id="preexam-title"></span>
+          </div>
+          <div class="score-bar" style="display:flex;margin-bottom:16px">
+            <div class="score-stat"><span class="val" id="preexam-answered">0/0</span><span class="lbl">Répondues</span></div>
+            <div class="score-stat"><span class="val" id="preexam-correct-v" style="color:var(--green)">0</span><span class="lbl">Correctes</span></div>
+            <div class="score-stat"><span class="val" id="preexam-pct-v">0%</span><span class="lbl">Score</span></div>
+            <div class="progress-wrap"><div class="progress-fill" id="preexam-progress"></div></div>
+          </div>
+          <div id="preexam-questions"></div>
+        </div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -1113,6 +1363,10 @@ $$('.nav-item').forEach(item => {
     $(`panel-${page}`).classList.add('active');
     state.page = page;
     if (page === 'exams' && Object.keys(state.exam.catalog).length === 0) loadExamCatalog();
+    if (page === 'bank') loadBank();
+    if (page === 'qcm') loadCourses();
+    if (page === 'preexam') loadPreExam();
+    if (page === 'timeline' || page === 'gaps' || page === 'weak') populateDiscSelects();
   });
 });
 
@@ -1304,30 +1558,8 @@ function submitQCMQuestion(q, index) {
   // Build correction panel
   const corrWrap = document.getElementById(`qcm-corr-${index}`);
   if (corrWrap) {
-    corrWrap.innerHTML = '';
-    // Why correct answers are correct
-    if (q.explanation) {
-      const div = document.createElement('div');
-      div.className = 'correction-correct';
-      div.innerHTML = `<span class="corr-label">✓ Pourquoi c'est correct</span>${q.explanation}`;
-      corrWrap.appendChild(div);
-    }
-    // Why wrong answers are wrong
-    const distractors = q.distractors || {};
-    ['A','B','C','D','E'].forEach(l => {
-      if (correct.includes(l)) return;  // skip correct choices
-      if (!q.choices[l]) return;         // skip empty choices
-      const reason = distractors[l] || distractors[l.toLowerCase()];
-      if (reason) {
-        const div = document.createElement('div');
-        div.className = 'correction-wrong';
-        div.innerHTML = `<span class="corr-label">✕ Pourquoi ${l} est faux</span>${reason}`;
-        corrWrap.appendChild(div);
-      }
-    });
-    if (corrWrap.children.length > 0) {
-      corrWrap.style.display = 'flex';
-    }
+    const html = buildCorrectionHTML(q.explanation, q.distractors, correct, q.choices, q.source_claim);
+    if (html) { corrWrap.outerHTML = html; }
   }
 
   $(`qcm-submit-${index}`).style.display = 'none';
@@ -1344,10 +1576,12 @@ async function generateQCM() {
   $('qcm-score-bar').classList.add('hidden');
 
   try {
+    const courseDisc = $('qcm-course-disc').value || state.discipline;
+    const courseFile = $('qcm-course-file').value || '';
     const res  = await fetch('/api/qcm/generate', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ discipline: state.discipline, topic, top_k: 5 })
+      body: JSON.stringify({ discipline: courseDisc, course: courseFile, topic, top_k: 6 })
     });
     const data = await res.json();
 
@@ -1359,6 +1593,7 @@ async function generateQCM() {
     state.qcm.questions = data.questions;
     data.questions.forEach((q, i) => renderQCMQuestion(q, i));
     $('qcm-score-bar').classList.remove('hidden');
+    $('qcm-save').style.display = 'inline-flex';
     updateQCMScore();
 
   } catch(e) {
@@ -1373,6 +1608,7 @@ $('qcm-generate').addEventListener('click', generateQCM);
 $('qcm-reset').addEventListener('click', () => {
   resetQCM();
   $('qcm-topic').value = '';
+  $('qcm-save').style.display = 'none';
 });
 
 /* ── EXAMS ───────────────────────────────────────────────────────── */
@@ -1489,9 +1725,9 @@ function renderExamQuestions(questions) {
   questions.forEach(q => {
     const card = document.createElement('div');
     card.className = 'q-card';
+    card.id = `exam-card-${q.q_num}`;
 
-    const letters    = ['A','B','C','D','E'];
-    const choicesHTML = letters.map(l => {
+    const choicesHTML = ['A','B','C','D','E'].map(l => {
       const text = q.choices[l] || '';
       if (!text) return '';
       return `
@@ -1500,6 +1736,7 @@ function renderExamQuestions(questions) {
           <span class="choice-check">✓</span>
           <span class="choice-letter">${l}</span>
           <span>${text}</span>
+          <span class="state-icon" id="exam-si-${q.q_num}-${l}"></span>
         </label>`;
     }).join('');
 
@@ -1509,9 +1746,93 @@ function renderExamQuestions(questions) {
         <span class="q-text">${q.question}</span>
       </div>
       <div class="choices">${choicesHTML}</div>
+      <div class="q-footer">
+        <span class="q-result" id="exam-result-${q.q_num}"></span>
+        <button class="btn btn-ghost" id="exam-val-${q.q_num}"
+          style="font-size:0.82rem;padding:7px 16px"
+          onclick="validateExamQuestion(${q.q_num})">
+          Corriger
+        </button>
+      </div>
+      <div class="correction-wrap" id="exam-corr-${q.q_num}"></div>
     `;
     wrap.appendChild(card);
   });
+}
+
+function validateExamQuestion(q_num) {
+  const q = state.exam.questions.find(x => x.q_num === q_num);
+  if (!q) return;
+
+  // Already validated
+  if (document.getElementById(`exam-val-${q_num}`)?.disabled) return;
+
+  const selected = ['A','B','C','D','E'].filter(l => {
+    const cb = $(`exam-cb-${q_num}-${l}`);
+    return cb && cb.checked;
+  });
+
+  const correct  = q.correct || [];
+  const isRight  = JSON.stringify(selected.sort()) === JSON.stringify([...correct].sort());
+
+  // Lock checkboxes + colour choices
+  const cor = new Set(correct);
+  const sel = new Set(selected);
+  ['A','B','C','D','E'].forEach(l => {
+    const label = $(`exam-cl-${q_num}-${l}`);
+    const cb    = $(`exam-cb-${q_num}-${l}`);
+    const si    = $(`exam-si-${q_num}-${l}`);
+    if (!label) return;
+    label.classList.add('locked');
+    label.style.cursor = 'default';
+    if (cb) cb.disabled = true;
+    label.classList.remove('correct-hit','correct-miss','wrong-pick','neutral-after');
+    const inc = cor.has(l), was = sel.has(l);
+    if (inc && was)  { label.classList.add('correct-hit');  if(si) si.textContent='✓'; }
+    else if (inc)    { label.classList.add('correct-miss'); if(si) si.textContent='⚠'; }
+    else if (was)    { label.classList.add('wrong-pick');   if(si) si.textContent='✕'; }
+    else             { label.classList.add('neutral-after'); }
+  });
+
+  const resultEl = $(`exam-result-${q_num}`);
+  resultEl.style.display = 'block';
+  if (isRight) {
+    resultEl.textContent = '✓ correct';
+    resultEl.className = 'q-result pass';
+  } else {
+    resultEl.textContent = `✕ — bonne réponse: ${correct.join(', ')}`;
+    resultEl.className = 'q-result fail';
+  }
+
+  const valBtn = $(`exam-val-${q_num}`);
+  if (valBtn) { valBtn.disabled = true; valBtn.style.opacity = '0.4'; }
+
+  // Load professor-grounded explanation
+  const corrWrap = $(`exam-corr-${q_num}`);
+  corrWrap.innerHTML = `
+    <div class="loading-row" style="display:flex;padding:6px 0 2px">
+      <span class="spinner"></span>
+      <span style="font-size:0.75rem;color:var(--text-3)">Correction depuis le cours...</span>
+    </div>`;
+
+  fetch('/api/exams/explain', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      question:   q.question,
+      choices:    q.choices,
+      correct:    q.correct,
+      discipline: state.exam.block || 'medecine',
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    corrWrap.innerHTML = '';
+    const html = buildCorrectionHTML(data.explanation, data.distractors, q.correct, q.choices);
+    if (html) corrWrap.outerHTML = html;
+    else corrWrap.remove();
+  })
+  .catch(() => { corrWrap.remove(); });
 }
 
 function quitExam() {
@@ -1537,6 +1858,9 @@ $('exam-submit').addEventListener('click', () => {
   showExamResults();
 });
 
+// Also allow submitting from within the progress view via keyboard shortcut awareness
+// (no change needed — submit button already collects all checked state)
+
 function buildChoicesHTML(q, sel, cor) {
   return ['A','B','C','D','E'].map(l => {
     const text = q.choices[l] || '';
@@ -1560,10 +1884,14 @@ function buildChoicesHTML(q, sel, cor) {
   }).join('');
 }
 
-function buildCorrectionHTML(explanation, distractors, correct, choices) {
+function buildCorrectionHTML(explanation, distractors, correct, choices, source_claim) {
   let html = '';
+  // Show the verbatim course quote first if available
+  if (source_claim) {
+    html += `<div class="correction-quote"><span class="corr-label">📖 Extrait du cours</span>${source_claim}</div>`;
+  }
   if (explanation) {
-    html += `<div class="correction-correct"><span class="corr-label">✓ Basé sur le cours — pourquoi c'est correct</span>${explanation}</div>`;
+    html += `<div class="correction-correct"><span class="corr-label">✓ Pourquoi c'est correct</span>${explanation}</div>`;
   }
   ['A','B','C','D','E'].forEach(l => {
     if ((correct||[]).includes(l)) return;
@@ -1639,26 +1967,36 @@ function showExamResults() {
     const cor     = new Set(q.correct || []);
     const isRight = JSON.stringify([...sel].sort()) === JSON.stringify([...cor].sort());
 
+    // Check if already validated inline — reuse existing card
+    const existingCard = $(`exam-card-${q.q_num}`);
+    const alreadyValidated = $(`exam-val-${q.q_num}`)?.disabled;
+
     const card2 = document.createElement('div');
     card2.className = 'q-card';
     card2.style.marginBottom = '10px';
     card2.id = `res-card-${q.q_num}`;
 
-    card2.innerHTML = `
-      <div class="q-header">
-        <span class="q-badge">Q${q.q_num}</span>
-        <span class="q-text">${isRight ? '✅ ' : '❌ '}${q.question}</span>
-      </div>
-      <div class="choices">${buildChoicesHTML(q, sel, cor)}</div>
-      <div class="loading-row corr-loading" style="display:flex;padding:8px 0 4px">
-        <span class="spinner"></span>
-        <span style="font-size:0.75rem;color:var(--text-3)">Chargement correction depuis le cours...</span>
-      </div>
-    `;
-    corrWrap.appendChild(card2);
-
-    // Load explanation async from professor material
-    loadExplanation(q, card2, isRight);
+    if (alreadyValidated && existingCard) {
+      // Question already corrected — clone the validated card as-is
+      const clone = existingCard.cloneNode(true);
+      clone.style.marginBottom = '10px';
+      corrWrap.appendChild(clone);
+    } else {
+      // Not yet corrected — render fresh with async explanation
+      card2.innerHTML = `
+        <div class="q-header">
+          <span class="q-badge">Q${q.q_num}</span>
+          <span class="q-text">${isRight ? '✅ ' : '❌ '}${q.question}</span>
+        </div>
+        <div class="choices">${buildChoicesHTML(q, sel, cor)}</div>
+        <div class="loading-row corr-loading" style="display:flex;padding:8px 0 4px">
+          <span class="spinner"></span>
+          <span style="font-size:0.75rem;color:var(--text-3)">Correction depuis le cours...</span>
+        </div>
+      `;
+      corrWrap.appendChild(card2);
+      loadExplanation(q, card2, isRight);
+    }
   });
 }
 
@@ -1680,8 +2018,711 @@ $('results-back').addEventListener('click', () => {
   $('exam-questions').innerHTML = '';
 });
 
+/* ── BANK ────────────────────────────────────────────────────────── */
+const bankState = {
+  sessions:  [],
+  practice:  { questions: [], answers: {}, submitted: {}, correct: 0, answered: 0 }
+};
+
+async function loadBank() {
+  setLoading('bank-loading', true);
+  try {
+    const res  = await fetch('/api/qcm/bank');
+    const data = await res.json();
+    bankState.sessions = data.sessions || [];
+    renderBankList(bankState.sessions, data.total_questions);
+  } catch(e) {
+    toast('Erreur chargement banque.');
+  }
+  setLoading('bank-loading', false);
+}
+
+function renderBankList(sessions, total) {
+  const wrap = $('bank-sessions');
+  wrap.innerHTML = '';
+  $('bank-empty').style.display = sessions.length === 0 ? 'block' : 'none';
+  if (sessions.length === 0) return;
+
+  // Summary card
+  const summary = document.createElement('div');
+  summary.className = 'card';
+  summary.style.marginBottom = '16px';
+  summary.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <span style="font-family:var(--font-mono);font-size:0.78rem;color:var(--text-3)">${sessions.length} sessions · ${total} questions stockées</span>
+    </div>`;
+  wrap.appendChild(summary);
+
+  sessions.forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'card card-hover';
+    card.style.cursor = 'pointer';
+    card.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:0.92rem;margin-bottom:3px">${s.topic}</div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <span class="tag">${s.discipline}</span>
+            <span style="font-family:var(--font-mono);font-size:0.72rem;color:var(--text-3)">${s.count} questions · ${s.date}</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <button class="btn btn-primary" style="font-size:0.8rem;padding:6px 14px"
+            onclick="startBankPractice('${s.id}')">Pratiquer</button>
+          <button class="btn btn-ghost" style="font-size:0.8rem;padding:6px 10px;color:var(--red)"
+            onclick="deleteBankSession('${s.id}', this)">✕</button>
+        </div>
+      </div>`;
+    wrap.appendChild(card);
+  });
+}
+
+async function startBankPractice(session_id) {
+  try {
+    const res  = await fetch(`/api/qcm/bank/${session_id}`);
+    const data = await res.json();
+
+    bankState.practice = {
+      questions: data.questions, answers: {}, submitted: {}, correct: 0, answered: 0
+    };
+
+    $('bank-list-view').style.display     = 'none';
+    $('bank-practice-view').style.display = 'block';
+    $('bank-practice-title').textContent  = `${data.topic} · ${data.discipline}`;
+
+    const wrap = $('bank-questions');
+    wrap.innerHTML = '';
+    data.questions.forEach((q, i) => {
+      renderQCMQuestion(q, i, 'bank');
+    });
+    updateBankScore();
+  } catch(e) {
+    toast('Erreur chargement session.');
+  }
+}
+
+function updateBankScore() {
+  const qs      = bankState.practice.questions;
+  const total   = qs.length;
+  const answered = bankState.practice.answered;
+  const correct  = bankState.practice.correct;
+  const pct      = total ? Math.round(correct / total * 100) : 0;
+  $('bank-answered-count').textContent = `${answered}/${total}`;
+  $('bank-correct-count').textContent  = correct;
+  $('bank-pct').textContent            = pct + '%';
+  $('bank-progress').style.width       = (total ? answered / total * 100 : 0) + '%';
+  $('bank-pct').style.color = pct >= 50 ? 'var(--green)' : (answered === total && total > 0 ? 'var(--red)' : 'var(--text-1)');
+}
+
+async function deleteBankSession(id, btn) {
+  btn.disabled = true;
+  try {
+    await fetch(`/api/qcm/bank/${id}`, { method: 'DELETE' });
+    await loadBank();
+    toast('Session supprimée.');
+  } catch(e) {
+    btn.disabled = false;
+  }
+}
+
+$('bank-back').addEventListener('click', () => {
+  $('bank-practice-view').style.display = 'none';
+  $('bank-list-view').style.display     = 'block';
+});
+
+// Save button in QCM panel
+$('qcm-save').addEventListener('click', async () => {
+  const qs = state.qcm.questions;
+  if (!qs.length) return;
+  $('qcm-save').disabled = true;
+  $('qcm-save').textContent = '...';
+  try {
+    const res  = await fetch('/api/qcm/save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        discipline: state.discipline,
+        topic:      $('qcm-topic').value.trim() || state.discipline,
+        questions:  qs,
+      })
+    });
+    const data = await res.json();
+    toast(`✓ ${data.saved} questions sauvegardées`);
+    $('qcm-save').style.display = 'none';
+  } catch(e) {
+    toast('Erreur sauvegarde.');
+  }
+  $('qcm-save').disabled = false;
+  $('qcm-save').textContent = '💾 Sauvegarder';
+});
+
+/* ── Update renderQCMQuestion to support bank prefix ── */
+const _origRenderQCM = renderQCMQuestion;
+function renderQCMQuestion(q, index, prefix) {
+  const pfx       = prefix || 'qcm';
+  const container = pfx === 'bank' ? $('bank-questions') : $('qcm-questions');
+  const answered  = pfx === 'bank'
+    ? bankState.practice.submitted[index]
+    : state.qcm.submitted && state.qcm.submitted[index];
+
+  const card = document.createElement('div');
+  card.className = 'q-card';
+  card.id = `${pfx}-card-${index}`;
+
+  const letters = ['A','B','C','D','E'];
+  const choicesHTML = letters.map(l => {
+    const text = q.choices[l] || '';
+    if (!text) return '';
+    return `
+      <label class="choice-label" id="${pfx}-cl-${index}-${l}">
+        <input type="checkbox" id="${pfx}-cb-${index}-${l}">
+        <span class="choice-check">✓</span>
+        <span class="choice-letter">${l}</span>
+        <span>${text}</span>
+        <span class="state-icon" id="${pfx}-si-${index}-${l}"></span>
+      </label>`;
+  }).join('');
+
+  card.innerHTML = `
+    <div class="q-header">
+      <span class="q-badge">Q${index + 1}</span>
+      <span class="q-text">${q.question}</span>
+    </div>
+    <div class="choices" id="${pfx}-choices-${index}">${choicesHTML}</div>
+    <div class="q-footer">
+      <span class="q-result" id="${pfx}-result-${index}"></span>
+      <button class="btn btn-primary" id="${pfx}-submit-${index}" style="font-size:0.82rem;padding:7px 16px">
+        Valider
+      </button>
+    </div>
+    <div class="correction-wrap" id="${pfx}-corr-${index}"></div>
+  `;
+  container.appendChild(card);
+
+  $(`${pfx}-submit-${index}`).addEventListener('click', () => submitQCMQuestion(q, index, pfx));
+}
+
+/* ── Patch submitQCMQuestion to handle prefix + bank score ── */
+const _origSubmit = submitQCMQuestion;
+function submitQCMQuestion(q, index, prefix) {
+  const pfx = prefix || 'qcm';
+  if (pfx === 'bank' ? bankState.practice.submitted[index] : state.qcm.submitted[index]) return;
+
+  const selected = ['A','B','C','D','E'].filter(l => {
+    const cb = $(`${pfx}-cb-${index}-${l}`);
+    return cb && cb.checked;
+  });
+  const correct  = q.correct || [];
+  const isRight  = JSON.stringify(selected.sort()) === JSON.stringify([...correct].sort());
+
+  if (pfx === 'bank') {
+    bankState.practice.submitted[index] = true;
+    bankState.practice.answered++;
+    if (isRight) bankState.practice.correct++;
+  } else {
+    state.qcm.submitted[index] = true;
+    state.qcm.answers[index]   = selected;
+    state.qcm.answered++;
+    if (isRight) state.qcm.correct++;
+  }
+
+  ['A','B','C','D','E'].forEach(l => {
+    const label = $(`${pfx}-cl-${index}-${l}`);
+    const cb    = $(`${pfx}-cb-${index}-${l}`);
+    const si    = $(`${pfx}-si-${index}-${l}`);
+    if (!label) return;
+    label.classList.add('locked');
+    label.style.cursor = 'default';
+    if (cb) cb.disabled = true;
+    const inc = correct.includes(l), was = selected.includes(l);
+    label.classList.remove('correct-hit','correct-miss','wrong-pick','neutral-after');
+    if (inc && was)  { label.classList.add('correct-hit');  if(si) si.textContent='✓'; }
+    else if (inc)    { label.classList.add('correct-miss'); if(si) si.textContent='⚠'; }
+    else if (was)    { label.classList.add('wrong-pick');   if(si) si.textContent='✕'; }
+    else             { label.classList.add('neutral-after'); }
+  });
+
+  const resultEl = $(`${pfx}-result-${index}`);
+  resultEl.style.display = 'block';
+  resultEl.textContent   = isRight ? '✓ correct' : `✕ — bonne réponse: ${correct.join(', ')}`;
+  resultEl.className     = `q-result ${isRight ? 'pass' : 'fail'}`;
+
+  const corrWrap = $(`${pfx}-corr-${index}`);
+  if (corrWrap) {
+    corrWrap.innerHTML = '';
+    const distractors = q.distractors || {};
+    let html = '';
+    if (q.explanation) html += `<div class="correction-correct"><span class="corr-label">✓ Pourquoi c'est correct</span>${q.explanation}</div>`;
+    ['A','B','C','D','E'].forEach(l => {
+      if (correct.includes(l) || !q.choices[l]) return;
+      const reason = distractors[l] || distractors[l.toLowerCase()] || '';
+      if (reason) html += `<div class="correction-wrong"><span class="corr-label">✕ Pourquoi ${l} est faux</span>${reason}</div>`;
+    });
+    if (html) { corrWrap.innerHTML = html; corrWrap.style.display = 'flex'; }
+  }
+
+  $(`${pfx}-submit-${index}`).style.display = 'none';
+  $(`${pfx}-card-${index}`).classList.add('answered');
+
+  if (pfx === 'bank') updateBankScore();
+  else if (pfx === 'weak') { weakState.answered++; if(wasCorrect) weakState.correct++; updateWeakScore(); }
+  else if (pfx === 'preexam') { preexamState.answered++; if(wasCorrect) preexamState.correct++; updatePreExamScore(); }
+  else updateQCMScore();
+}
+
+/* ── COURSES ─────────────────────────────────────────────────────── */
+let _allCourses = {};
+
+async function loadCourses() {
+  try {
+    const res  = await fetch('/api/courses');
+    const data = await res.json();
+    _allCourses = data.courses || {};
+
+    const discSel = $('qcm-course-disc');
+    discSel.innerHTML = '<option value="">Toutes les matières</option>';
+    Object.keys(_allCourses).sort().forEach(d => {
+      const o = document.createElement('option');
+      o.value = d; o.textContent = d.charAt(0).toUpperCase() + d.slice(1);
+      discSel.appendChild(o);
+    });
+
+    // Wire change event
+    discSel.onchange = () => updateCourseFiles(discSel.value);
+
+    // Populate files immediately — show all courses by default
+    updateCourseFiles('');
+  } catch(e) {
+    console.warn('Could not load courses:', e);
+  }
+}
+
+function updateCourseFiles(disc) {
+  const fileSel = $('qcm-course-file');
+  fileSel.innerHTML = '<option value="">— Cours aléatoire —</option>';
+
+  let files = [];
+  if (disc) {
+    files = _allCourses[disc] || [];
+  } else {
+    // All disciplines — flatten and deduplicate
+    const seen = new Set();
+    Object.values(_allCourses).forEach(arr => {
+      arr.forEach(f => { if (!seen.has(f)) { seen.add(f); files.push(f); } });
+    });
+  }
+
+  files.sort().forEach(f => {
+    const o = document.createElement('option');
+    o.value = f;
+    o.textContent = f.replace(/\.(pdf|pptx|ppt)$/i, '').replace(/[_\-]/g, ' ');
+    fileSel.appendChild(o);
+  });
+}
+
+/* ── CONFIDENCE SCORING ─────────────────────────────────────────── */
+function addConfidenceCheckbox(cardEl, pfx, index) {
+  const footer = cardEl.querySelector('.q-footer');
+  if (!footer) return;
+  const row = document.createElement('div');
+  row.className = 'confidence-row';
+  row.id = `conf-row-${pfx}-${index}`;
+  row.innerHTML = `
+    <label>
+      <input type="checkbox" id="conf-${pfx}-${index}" checked>
+      Je suis sûr(e) de ma réponse
+    </label>`;
+  footer.insertBefore(row, footer.firstChild);
+}
+
+function getConfidence(pfx, index) {
+  const cb = document.getElementById(`conf-${pfx}-${index}`);
+  return cb ? cb.checked : true;
+}
+
+async function recordAnswer(q, wasCorrect, confident, pfx) {
+  try {
+    await fetch('/api/history/record', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        question:    q.question,
+        correct:     q.correct,
+        choices:     q.choices,
+        discipline:  q.discipline || state.discipline || 'general',
+        was_correct: wasCorrect,
+        confident:   confident,
+      })
+    });
+  } catch(e) {}
+}
+
+/* ── PATCH renderQCMQuestion to add confidence checkbox ── */
+const _origRenderForConf = renderQCMQuestion;
+function renderQCMQuestion(q, index, prefix) {
+  _origRenderForConf(q, index, prefix);
+  const pfx = prefix || 'qcm';
+  const card = document.getElementById(`${pfx}-card-${index}`);
+  if (card) addConfidenceCheckbox(card, pfx, index);
+}
+
+/* ── PATCH submitQCMQuestion to record answer ── */
+const _origSubmitForRecord = submitQCMQuestion;
+function submitQCMQuestion(q, index, prefix) {
+  const pfx       = prefix || 'qcm';
+  const confident = getConfidence(pfx, index);
+
+  // Call original submit
+  _origSubmitForRecord(q, index, prefix);
+
+  // Determine correctness from result element
+  const resultEl = document.getElementById(`${pfx}-result-${index}`);
+  const wasCorrect = resultEl && resultEl.classList.contains('pass');
+
+  // Remove confidence row after submission
+  const confRow = document.getElementById(`conf-row-${pfx}-${index}`);
+  if (confRow) confRow.remove();
+
+  // Record to history
+  recordAnswer(q, wasCorrect, confident, pfx);
+}
+
+/* ── TIMELINE ────────────────────────────────────────────────────── */
+async function doTimelineSearch() {
+  const q    = $('timeline-input').value.trim();
+  const disc = $('timeline-disc').value || 'Toutes';
+  if (!q) return;
+
+  setLoading('timeline-loading', true);
+  $('timeline-results').innerHTML = '';
+
+  try {
+    const res  = await fetch(`/api/timeline/search?q=${encodeURIComponent(q)}&discipline=${disc}&limit=20`);
+    const data = await res.json();
+
+    if (!data.hits || data.hits.length === 0) {
+      $('timeline-results').innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>Aucun résultat pour "<strong>${q}</strong>".</p></div>`;
+      return;
+    }
+
+    const wrap = $('timeline-results');
+    const header = document.createElement('div');
+    header.style.cssText = 'font-family:var(--font-mono);font-size:0.72rem;color:var(--text-3);margin-bottom:12px';
+    header.textContent = `${data.hits.length} occurrences trouvées`;
+    wrap.appendChild(header);
+
+    data.hits.forEach(hit => {
+      const div = document.createElement('div');
+      div.className = 'timeline-hit';
+      // Highlight search term in text
+      const escaped = q.replace(/[.*+?^${}()|[\]\]/g, '\$&');
+      const highlighted = hit.text.replace(new RegExp(escaped, 'gi'), m => `<mark>${m}</mark>`);
+      div.innerHTML = `
+        <div class="timeline-meta">
+          <span class="tag">${hit.discipline}</span>
+          <span class="tag">${hit.filename}</span>
+          <span class="tag">${hit.date}</span>
+          <span style="font-family:var(--font-mono);font-size:0.7rem;color:var(--cyan);margin-left:auto">${hit.score}%</span>
+        </div>
+        <div class="timeline-text">${highlighted}</div>`;
+      wrap.appendChild(div);
+    });
+  } catch(e) {
+    toast(`Erreur: ${e.message}`);
+  }
+  setLoading('timeline-loading', false);
+}
+
+$('timeline-search-btn').addEventListener('click', doTimelineSearch);
+$('timeline-input').addEventListener('keydown', e => { if (e.key === 'Enter') doTimelineSearch(); });
+
+/* ── GAP DETECTION ───────────────────────────────────────────────── */
+async function analyzeGaps() {
+  const disc = $('gaps-disc').value;
+  if (!disc) { toast('Choisir une matière'); return; }
+
+  setLoading('gaps-loading', true);
+  $('gaps-results').innerHTML = '';
+
+  try {
+    const res  = await fetch(`/api/gaps/${encodeURIComponent(disc)}`);
+    const data = await res.json();
+
+    const wrap = $('gaps-results');
+
+    if (data.error) {
+      wrap.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Erreur d'analyse.</p></div>`;
+      return;
+    }
+
+    // Coverage score
+    const scoreCard = document.createElement('div');
+    scoreCard.className = 'card';
+    scoreCard.style.marginBottom = '16px';
+    const pct = data.coverage_score || 0;
+    scoreCard.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-family:var(--font-display);font-weight:700">Cohérence slides / cours</span>
+        <span style="font-family:var(--font-mono);font-size:1.5rem;color:${pct>=70?'var(--green)':pct>=50?'var(--yellow)':'var(--red)'}">${pct}%</span>
+      </div>
+      <div style="font-size:0.78rem;color:var(--text-3);margin-top:6px;font-family:var(--font-mono)">
+        Slides: ${(data.slides_files||[]).length} fichiers · Transcriptions: ${(data.transcript_files||[]).length} fichiers
+      </div>`;
+    wrap.appendChild(scoreCard);
+
+    const sections = [
+      { key: 'only_in_slides',      label: '📋 Dans les slides mais non mentionné en cours', icon: '📋' },
+      { key: 'only_in_transcripts', label: '🎙️ Mentionné en cours mais absent des slides',  icon: '🎙️' },
+      { key: 'contradictions',      label: '⚠️ Contradictions détectées',                   icon: '⚠️' },
+    ];
+
+    sections.forEach(s => {
+      const items = data[s.key] || [];
+      if (!items.length) return;
+      const sec = document.createElement('div');
+      sec.className = 'gap-section';
+      sec.innerHTML = `<h4>${s.label}</h4>` +
+        items.map(item => `<div class="gap-item"><span>${s.icon}</span><span>${item}</span></div>`).join('');
+      wrap.appendChild(sec);
+    });
+
+    if (!wrap.children.length) {
+      wrap.innerHTML = '<div class="empty-state"><div class="icon">✅</div><p>Aucune lacune détectée — slides et cours sont cohérents.</p></div>';
+    }
+  } catch(e) {
+    toast(`Erreur: ${e.message}`);
+  }
+  setLoading('gaps-loading', false);
+}
+
+$('gaps-analyze').addEventListener('click', analyzeGaps);
+
+/* ── WEAK POINTS ─────────────────────────────────────────────────── */
+const weakState = { questions: [], answered: 0, correct: 0, submitted: {} };
+
+async function loadWeakPoints() {
+  const disc = $('weak-disc').value || 'Toutes';
+  setLoading('weak-loading', true);
+  $('weak-list').innerHTML = '';
+  $('weak-stats').style.display = 'none';
+
+  try {
+    const res  = await fetch(`/api/history/weak?discipline=${disc}&limit=15`);
+    const data = await res.json();
+
+    $('weak-stats').style.display = 'block';
+    $('weak-stats').innerHTML = `
+      <div style="display:flex;gap:24px;align-items:center">
+        <div class="score-stat"><span class="val">${data.total_tracked}</span><span class="lbl">Questions suivies</span></div>
+        <div class="score-stat"><span class="val" style="color:var(--red)">${data.weak.length}</span><span class="lbl">Points faibles</span></div>
+      </div>`;
+
+    if (!data.weak.length) {
+      $('weak-list').innerHTML = '<div class="empty-state"><div class="icon">🎉</div><p>Aucun point faible détecté.<br>Continuez à pratiquer pour que l'analyse se construise.</p></div>';
+      return;
+    }
+
+    $('weak-practice').style.display = 'inline-flex';
+    weakState.questions = data.weak;
+
+    data.weak.forEach((q, i) => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.style.marginBottom = '8px';
+      const tag = q.last_wrong ? 'tag-weak' : 'tag-unsure';
+      const label = q.last_wrong ? '✕ Raté' : '? Incertain';
+      card.innerHTML = `
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+          <div>
+            <div style="font-size:0.9rem;font-weight:500;margin-bottom:6px">${q.question}</div>
+            <div style="display:flex;gap:6px">
+              <span class="tag ${tag}">${label}</span>
+              <span class="tag">${q.discipline}</span>
+              <span style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-3)">${q.attempts} tentatives · score faiblesse: ${q.score}</span>
+            </div>
+          </div>
+        </div>`;
+      $('weak-list').appendChild(card);
+    });
+  } catch(e) {
+    toast(`Erreur: ${e.message}`);
+  }
+  setLoading('weak-loading', false);
+}
+
+function startWeakPractice() {
+  if (!weakState.questions.length) return;
+  weakState.answered = 0; weakState.correct = 0; weakState.submitted = {};
+  $('weak-list').style.display    = 'none';
+  $('weak-stats').style.display   = 'none';
+  $('weak-practice').style.display = 'none';
+  $('weak-practice-wrap').style.display = 'block';
+
+  const wrap = $('weak-questions');
+  wrap.innerHTML = '';
+  weakState.questions.forEach((q, i) => renderQCMQuestion(q, i, 'weak'));
+  updateWeakScore();
+}
+
+function updateWeakScore() {
+  const total = weakState.questions.length;
+  $('weak-answered').textContent = `${weakState.answered}/${total}`;
+  $('weak-correct-v').textContent = weakState.correct;
+  const pct = total ? Math.round(weakState.correct / total * 100) : 0;
+  $('weak-pct-v').textContent = pct + '%';
+  $('weak-progress').style.width = (total ? weakState.answered / total * 100 : 0) + '%';
+}
+
+$('weak-load').addEventListener('click', loadWeakPoints);
+$('weak-practice').addEventListener('click', startWeakPractice);
+$('weak-back').addEventListener('click', () => {
+  $('weak-practice-wrap').style.display = 'none';
+  $('weak-list').style.display    = 'block';
+  $('weak-stats').style.display   = 'block';
+  $('weak-practice').style.display = 'inline-flex';
+});
+
+/* ── PRE-EXAM ────────────────────────────────────────────────────── */
+const preexamState = { selected: new Set(), blocks: [], questions: [], answered: 0, correct: 0, submitted: {} };
+
+async function loadPreExam() {
+  setLoading('preexam-loading', true);
+  try {
+    const res  = await fetch('/api/preexam/upcoming');
+    const data = await res.json();
+    preexamState.blocks = data.blocks || [];
+    renderPreExamBlocks(data.blocks);
+  } catch(e) {
+    toast('Erreur chargement pré-examen.');
+  }
+  setLoading('preexam-loading', false);
+}
+
+function renderPreExamBlocks(blocks) {
+  const wrap = $('preexam-blocks');
+  wrap.innerHTML = '';
+
+  if (!blocks.length) {
+    wrap.innerHTML = '<div class="empty-state"><div class="icon">📚</div><p>Aucun examen ingéré.<br>Ingérez d'abord vos examens.</p></div>';
+    return;
+  }
+
+  blocks.forEach(b => {
+    const card = document.createElement('div');
+    card.className = 'block-card';
+    card.id = `preexam-block-${b.block}`;
+    const urgencyClass = b.urgency >= 7 ? 'urgency-high' : b.urgency >= 4 ? 'urgency-medium' : 'urgency-low';
+    const urgencyLabel = b.urgency >= 7 ? '🔴 Priorité haute' : b.urgency >= 4 ? '🟡 Priorité moyenne' : '🟢 Bien couvert';
+    card.innerHTML = `
+      <div class="urgency-bar ${urgencyClass}"></div>
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:0.95rem;margin-bottom:4px">${b.block.charAt(0).toUpperCase() + b.block.slice(1)}</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:0.75rem;color:var(--text-3);font-family:var(--font-mono)">${b.q_count} questions · ${b.practiced} tentatives</span>
+          <span class="tag" style="font-size:0.68rem">${urgencyLabel}</span>
+        </div>
+      </div>
+      <div style="font-family:var(--font-mono);font-size:1.2rem;font-weight:500;color:${b.urgency>=7?'var(--red)':b.urgency>=4?'var(--yellow)':'var(--green)'}">${b.urgency}/10</div>`;
+    card.addEventListener('click', () => {
+      if (preexamState.selected.has(b.block)) {
+        preexamState.selected.delete(b.block);
+        card.classList.remove('selected');
+      } else {
+        preexamState.selected.add(b.block);
+        card.classList.add('selected');
+      }
+      $('preexam-start-row').style.display = preexamState.selected.size ? 'block' : 'none';
+    });
+    wrap.appendChild(card);
+  });
+}
+
+async function generatePreExamSession() {
+  if (!preexamState.selected.size) return;
+  $('preexam-generate').disabled = true;
+  $('preexam-generate').innerHTML = '<span class="spinner"></span> Génération...';
+
+  try {
+    const res  = await fetch('/api/preexam/generate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ blocks: [...preexamState.selected], n: 15 })
+    });
+    const data = await res.json();
+
+    if (!data.questions.length) { toast('Aucune question générée.'); return; }
+
+    preexamState.questions = data.questions;
+    preexamState.answered  = 0;
+    preexamState.correct   = 0;
+    preexamState.submitted = {};
+
+    $('preexam-select-view').style.display   = 'none';
+    $('preexam-practice-view').style.display = 'block';
+    $('preexam-title').textContent = `${[...preexamState.selected].join(' + ')} · ${data.weak_count} faibles + ${data.new_count} nouvelles`;
+
+    const wrap = $('preexam-questions');
+    wrap.innerHTML = '';
+    data.questions.forEach((q, i) => {
+      if (q.from_weak) {
+        // Mark weak questions visually
+        renderQCMQuestion(q, i, 'preexam');
+        const card = document.getElementById(`preexam-card-${i}`);
+        if (card) {
+          const badge = document.createElement('span');
+          badge.className = 'tag tag-weak';
+          badge.style.cssText = 'margin-left:8px;font-size:0.65rem';
+          badge.textContent = '↺ Point faible';
+          card.querySelector('.q-badge')?.parentNode?.appendChild(badge);
+        }
+      } else {
+        renderQCMQuestion(q, i, 'preexam');
+      }
+    });
+    updatePreExamScore();
+  } catch(e) {
+    toast(`Erreur: ${e.message}`);
+  }
+  $('preexam-generate').disabled = false;
+  $('preexam-generate').innerHTML = '🏆 Générer ma session pré-examen';
+}
+
+function updatePreExamScore() {
+  const total = preexamState.questions.length;
+  $('preexam-answered').textContent = `${preexamState.answered}/${total}`;
+  $('preexam-correct-v').textContent = preexamState.correct;
+  const pct = total ? Math.round(preexamState.correct / total * 100) : 0;
+  $('preexam-pct-v').textContent = pct + '%';
+  $('preexam-progress').style.width = (total ? preexamState.answered / total * 100 : 0) + '%';
+}
+
+$('preexam-generate').addEventListener('click', generatePreExamSession);
+$('preexam-back').addEventListener('click', () => {
+  $('preexam-practice-view').style.display = 'none';
+  $('preexam-select-view').style.display   = 'block';
+});
+
+function populateDiscSelects() {
+  const disciplines = Object.keys(_allCourses).sort();
+  const selects = ['timeline-disc', 'gaps-disc', 'weak-disc'];
+  selects.forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    // Keep first option, repopulate rest
+    while (sel.options.length > 1) sel.remove(1);
+    disciplines.forEach(d => {
+      const o = document.createElement('option');
+      o.value = d; o.textContent = d.charAt(0).toUpperCase() + d.slice(1);
+      sel.appendChild(o);
+    });
+  });
+}
+
+/* ── NAV PAGE HANDLERS ───────────────────────────────────────────── */
+
 /* ── INIT ────────────────────────────────────────────────────────── */
 loadStats();
+loadCourses();
 </script>
 </body>
 </html>
