@@ -965,7 +965,7 @@ html, body {
         <span class="dot"></span>
         FMPC Assistant
       </div>
-      <div class="logo-sub">A1 · S2 · 2024–2025</div>
+      <div class="logo-sub">A1 · S2 · 2025–2026</div>
     </div>
 
     <nav class="nav">
@@ -2415,8 +2415,8 @@ async function doTimelineSearch() {
       const div = document.createElement('div');
       div.className = 'timeline-hit';
       // Highlight search term in text
-      const escaped = q.replace(/[.*+?^${}()|[\]\]/g, '\$&');
-      const highlighted = hit.text.replace(new RegExp(escaped, 'gi'), m => `<mark>${m}</mark>`);
+      const highlighted = hit.text; // search term highlighting disabled
+
       div.innerHTML = `
         <div class="timeline-meta">
           <span class="tag">${hit.discipline}</span>
@@ -2518,7 +2518,7 @@ async function loadWeakPoints() {
       </div>`;
 
     if (!data.weak.length) {
-      $('weak-list').innerHTML = '<div class="empty-state"><div class="icon">🎉</div><p>Aucun point faible détecté.<br>Continuez à pratiquer pour que l'analyse se construise.</p></div>';
+      $('weak-list').innerHTML = '<div class="empty-state"><div class="icon">🎉</div><p>Aucun point faible détecté.<br>Continuez à pratiquer pour que l&#39;analyse se construise.</p></div>';
       return;
     }
 
@@ -2603,7 +2603,7 @@ function renderPreExamBlocks(blocks) {
   wrap.innerHTML = '';
 
   if (!blocks.length) {
-    wrap.innerHTML = '<div class="empty-state"><div class="icon">📚</div><p>Aucun examen ingéré.<br>Ingérez d'abord vos examens.</p></div>';
+    wrap.innerHTML = '<div class="empty-state"><div class="icon">📚</div><p>Aucun examen ingéré.<br>Ingérez d&#39;abord vos examens.</p></div>';
     return;
   }
 
