@@ -1,5 +1,3 @@
-i · PY
-Copy
 
 """
 api.py - FMPC Study Assistant Backend
