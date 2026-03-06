@@ -1,4 +1,8 @@
+'''
 
+It is now dead ever since I switched to HTML, but it is kept to document project progress, and if I ever want to go back to Streamlit for any reason.
+
+'''
             collections[name] = client.get_collection(name=name, embedding_function=ef)
         except Exception:
             collections[name] = None
