@@ -82,23 +82,68 @@ def infer_discipline(filepath):
     fname = os.path.splitext(os.path.basename(filepath))[0].lower()
     return next((d for d in KNOWN_DISCIPLINES if d in fname), "medecine")
 
+# ── OCR FALLBACK ───────────────────────────────────────────────────
+def _ocr_pdf(path):
+    """OCR fallback for image-only PDFs using PyMuPDF + Tesseract."""
+    try:
+        import fitz
+        import pytesseract
+        from PIL import Image
+        import io
+    except ImportError as e:
+        print(f"[INGEST] OCR dependencies missing: {e}")
+        print("  Run: py -3.11 -m pip install pymupdf pytesseract pillow")
+        print("  Also install Tesseract: https://github.com/UB-Mannheim/tesseract/wiki")
+        return []
+
+    print("[INGEST] Falling back to OCR (image-only PDF)...")
+    pages = []
+    doc   = fitz.open(path)
+    total = len(doc)
+    print(f"[INGEST] OCR: {total} pages at 300 DPI...")
+
+    for i, page in enumerate(doc, 1):
+        try:
+            mat  = fitz.Matrix(300 / 72, 300 / 72)
+            pix  = page.get_pixmap(matrix=mat, alpha=False)
+            img  = Image.open(io.BytesIO(pix.tobytes("png")))
+            text = pytesseract.image_to_string(img, lang="fra", config="--psm 3")
+            text = text.strip()
+            if len(text) >= 20:
+                pages.append((i, text))
+                print(f"[INGEST]   Page {i}/{total}: OCR OK ({len(text)} chars)")
+            else:
+                print(f"[INGEST]   Page {i}/{total}: skipped (too little text)")
+        except Exception as e:
+            print(f"[INGEST]   Page {i}/{total}: OCR failed — {e}")
+
+    doc.close()
+    print(f"[INGEST] OCR complete: {len(pages)} usable pages")
+    return pages
+
 # ── EXTRACTION ─────────────────────────────────────────────────────
 def extract_pdf(path):
     pages = []
+    text_page_count = 0
+
     with pdfplumber.open(path) as pdf:
         total = len(pdf.pages)
         print(f"[INGEST] PDF: {total} pages")
         for i, page in enumerate(pdf.pages, 1):
             text = page.extract_text()
-            if text:
-                text = text.strip()
-                if len(text) >= 20:
-                    pages.append((i, text))
-                else:
-                    print(f"[INGEST]   Slide {i}: skipped (too short)")
+            if text and len(text.strip()) >= 20:
+                pages.append((i, text.strip()))
+                text_page_count += 1
             else:
-                print(f"[INGEST]   Slide {i}: skipped (no text)")
-    print(f"[INGEST] Extracted {len(pages)} usable slides")
+                print(f"[INGEST]   Slide {i}: no embedded text")
+
+    # Fewer than 10% of pages had extractable text — treat as scanned
+    if text_page_count < max(1, total * 0.10):
+        print(f"[INGEST] Only {text_page_count}/{total} pages had embedded text — treating as scanned PDF")
+        pages = _ocr_pdf(path)
+    else:
+        print(f"[INGEST] Extracted {len(pages)} usable slides")
+
     return pages
 
 def extract_pptx(path):
@@ -359,6 +404,68 @@ def cmd_watch():
                 existing = col.get(ids=[f"{name_noext}_p1"])
                 if existing and existing["ids"]:
                     print(f"[WATCHER]   Already ingested: {fname}")
+                    continue
+            except Exception:
+                pass
+            subfolder = os.path.basename(root)
+            print(f"[WATCHER]   Ingesting: {subfolder}/{fname} ({discipline})")
+            found = True
+            try:
+                ingest_file(fpath, discipline)
+            except Exception as e:
+                print(f"[WATCHER]   ERROR: {e}")
+
+    if not found:
+        print("[WATCHER] No new files found. Waiting...\n")
+
+    observer = Observer()
+    observer.schedule(SlideHandler(), path=SLIDES_DIR, recursive=True)
+    observer.start()
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        observer.stop()
+        print("\n[WATCHER] Stopped.")
+    observer.join()
+
+# ── ENTRY POINT ────────────────────────────────────────────────────
+if __name__ == "__main__":
+
+    # No args or "watch" -> watch mode
+    if len(sys.argv) == 1 or sys.argv[1] == "watch":
+        cmd_watch()
+        sys.exit(0)
+
+    # list
+    if sys.argv[1] == "list":
+        cmd_list()
+        sys.exit(0)
+
+    # delete <filename>
+    if sys.argv[1] == "delete":
+        if len(sys.argv) < 3:
+            print("Usage: py -3.11 ingest_slides.py delete \"filename_without_extension\"")
+            sys.exit(1)
+        cmd_delete(sys.argv[2])
+        sys.exit(0)
+
+    # manual ingest <path> [discipline]
+    file_path = sys.argv[1]
+    if not os.path.exists(file_path):
+        print(f"[INGEST] ERROR: File not found: {file_path}")
+        sys.exit(1)
+    if not any(file_path.lower().endswith(e) for e in SUPPORTED_EXT):
+        print(f"[INGEST] ERROR: Unsupported format. Use .pdf or .pptx")
+        sys.exit(1)
+
+    if len(sys.argv) >= 3:
+        discipline = sys.argv[2].lower().strip()
+    else:
+        discipline = infer_discipline(file_path)
+        print(f"[INGEST] Discipline inferred: {discipline}")
+
+    ingest_file(file_path, discipline)print(f"[WATCHER]   Already ingested: {fname}")
                     continue
             except Exception:
                 pass
