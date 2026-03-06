@@ -27,7 +27,7 @@ NOISE_REDUCTION    = 0.75
 PARAGRAPH_PAUSE    = 2.5
 MIN_CHUNK_SEC      = 0.5
 MAX_CHUNK_SEC      = 60.0  # Split any chunk longer than this into equal pieces
-BATCH_SIZE         = 2     # Try 4 if VRAM holds — 4x speedup vs original
+BATCH_SIZE         = 3     # Try 4 if VRAM holds — 4x speedup vs original
 MODEL_RELOAD_EVERY = 15    # Fewer reloads now that batch size is higher
 
 MEDICAL_PROMPT = (
@@ -219,8 +219,9 @@ for batch_start in range(0, total_chunks, BATCH_SIZE):
                 try:
                     results = model.transcribe(audio=batch_audio, language="French")
                 except Exception as e3:
-                    print(f"[TRANSCRIBER]   Batch {batch_num} failed completely — skipping.")
+                    print(f"[TRANSCRIBER]   Batch {batch_num} failed completely — inserting gap marker.")
                     torch.cuda.empty_cache()
+                    paragraphs.append(f"[SEGMENT MANQUANT — mémoire insuffisante, batch {batch_num}]")
                     continue
     except Exception as e:
         print(f"[TRANSCRIBER]   Batch {batch_num} failed — {e}. Trying without context...")
@@ -230,9 +231,10 @@ for batch_start in range(0, total_chunks, BATCH_SIZE):
                 language="French",
             )
         except Exception as e2:
-            print(f"[TRANSCRIBER]   Batch {batch_num} failed completely — skipping.")
+            print(f"[TRANSCRIBER]   Batch {batch_num} failed completely — inserting gap marker.")
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
+            paragraphs.append(f"[SEGMENT MANQUANT — erreur transcription, batch {batch_num}]")
             continue
 
     for result in results:
