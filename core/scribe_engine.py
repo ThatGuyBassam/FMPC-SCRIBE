@@ -9,9 +9,8 @@ ARCHIVE_HDD = r"D:\FMPC_Audio_Archive\Medical"
 LOG_PATH    = os.path.join(BASE_DIR, "scribe_log.txt")
 TMP_WAV     = os.path.join(BASE_DIR, "temp_processing.wav")
 TMP_RESULT  = os.path.join(BASE_DIR, "temp_result.tmp")
-'''
-folder where Python is located here.
-'''
+
+PYTHON      = sys.executable
 TRANSCRIBER = os.path.join(BASE_DIR, "transcriber.py")
 PROCESSOR   = os.path.join(BASE_DIR, "processor.py")
 
