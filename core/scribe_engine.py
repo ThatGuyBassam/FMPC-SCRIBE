@@ -10,7 +10,6 @@ LOG_PATH    = os.path.join(BASE_DIR, "scribe_log.txt")
 TMP_WAV     = os.path.join(BASE_DIR, "temp_processing.wav")
 TMP_RESULT  = os.path.join(BASE_DIR, "temp_result.tmp")
 
-PYTHON      = r"C:\Users\GAMER\AppData\Local\Programs\Python\Python311\python.exe"
 TRANSCRIBER = os.path.join(BASE_DIR, "transcriber.py")
 PROCESSOR   = os.path.join(BASE_DIR, "processor.py")
 
