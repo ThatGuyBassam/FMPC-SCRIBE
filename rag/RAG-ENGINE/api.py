@@ -1,4 +1,3 @@
-
 """
 api.py - FMPC Study Assistant Backend
 
@@ -318,26 +317,25 @@ async def generate_qcm(req: QCMRequest):
     MAX_ATTEMPTS = 10   # safety cap
     attempt      = 0
 
+    # ── Extract claims ONCE before the generation loop ──────────────
+    claim_prompt = (
+        "Tu es un assistant qui extrait des faits médicaux d'un texte de cours.\n"
+        "Extrait UNIQUEMENT les faits, affirmations, et relations anatomiques/physiologiques "
+        "présents EXPLICITEMENT dans le texte ci-dessous.\n"
+        "NE PAS ajouter de connaissances extérieures. NE PAS inférer. NE PAS compléter.\n"
+        "Format: une affirmation par ligne, formulée comme une phrase courte et précise.\n\n"
+        f"TEXTE DU COURS ({req.discipline}):\n{context}\n\n"
+        "AFFIRMATIONS EXTRAITES (uniquement ce qui est dans le texte):"
+    )
+    claims_raw = ollama(claim_prompt, timeout=120)
+    claims = claims_raw.strip() if len(claims_raw.strip()) > 50 else context
+
     while len(all_q) < N_QCM and attempt < MAX_ATTEMPTS:
         attempt += 1
         needed    = N_QCM - len(all_q)
         batch_n   = min(4, needed)
 
-        # ── STEP 1: Extract verbatim claims from the retrieved chunks ──
-        claim_prompt = (
-            "Tu es un assistant qui extrait des faits médicaux d'un texte de cours.\n"
-            "Extrait UNIQUEMENT les faits, affirmations, et relations anatomiques/physiologiques "
-            "présents EXPLICITEMENT dans le texte ci-dessous.\n"
-            "NE PAS ajouter de connaissances extérieures. NE PAS inférer. NE PAS compléter.\n"
-            "Format: une affirmation par ligne, formulée comme une phrase courte et précise.\n\n"
-            f"TEXTE DU COURS ({req.discipline}):\n{context}\n\n"
-            "AFFIRMATIONS EXTRAITES (uniquement ce qui est dans le texte):"
-        )
-        claims_raw = ollama(claim_prompt, timeout=120)
-        # Use claims as the grounding material, fall back to raw context if empty
-        claims = claims_raw.strip() if len(claims_raw.strip()) > 50 else context
-
-        # ── STEP 2: Generate QCMs strictly from extracted claims ──
+        # ── Generate QCMs strictly from extracted claims ──
         avoid_current = [q["question"][:70] for q in all_q]
         avoid_banked  = [q[:70] for q in existing_qs[-20:]]
         avoid_all     = avoid_current + avoid_banked
