@@ -27,8 +27,8 @@ NOISE_REDUCTION    = 0.75
 PARAGRAPH_PAUSE    = 2.5
 MIN_CHUNK_SEC      = 0.5
 MAX_CHUNK_SEC      = 60.0  # Split any chunk longer than this into equal pieces
-BATCH_SIZE         = 1
-MODEL_RELOAD_EVERY = 5  # Reload every 5 batches (was 10)
+BATCH_SIZE         = 2     # Try 4 if VRAM holds — 4x speedup vs original
+MODEL_RELOAD_EVERY = 15    # Fewer reloads now that batch size is higher
 
 MEDICAL_PROMPT = (
     "French. Cours de médecine, FMPC Maroc. Accent marocain, ignorez la darija. "
@@ -188,30 +188,40 @@ for batch_start in range(0, total_chunks, BATCH_SIZE):
     try:
         results = model.transcribe(
             audio=batch_audio,
-            l                         anguage="French",
+            language="French",
             context=MEDICAL_PROMPT,
         )
     except torch.cuda.OutOfMemoryError as e:
         print(f"[TRANSCRIBER]   OOM on batch {batch_num} — purging VRAM and retrying...")
         purge_vram(model)
         model = load_model()
-        try:
-            results = model.transcribe(
-                audio=batch_audio,
-                language="French",
-                context=MEDICAL_PROMPT,
-            )
-        except torch.cuda.OutOfMemoryError:
-            print(f"[TRANSCRIBER]   OOM again — trying without context...")
-            try:
-                results = model.transcribe(
-                    audio=batch_audio,
-                    language="French",
-                )
-            except Exception as e3:
-                print(f"[TRANSCRIBER]   Batch {batch_num} failed completely — skipping.")
+        # If batch had multiple chunks, retry them one at a time
+        if len(batch_audio) > 1:
+            print(f"[TRANSCRIBER]   Retrying {len(batch_audio)} chunks individually...")
+            results = []
+            for single_audio in batch_audio:
+                try:
+                    r = model.transcribe(audio=[(single_audio[0], single_audio[1])], language="French", context=MEDICAL_PROMPT)
+                    results.extend(r)
+                except torch.cuda.OutOfMemoryError:
+                    try:
+                        r = model.transcribe(audio=[(single_audio[0], single_audio[1])], language="French")
+                        results.extend(r)
+                    except Exception:
+                        torch.cuda.empty_cache()
+                        continue
                 torch.cuda.empty_cache()
-                continue
+        else:
+            try:
+                results = model.transcribe(audio=batch_audio, language="French", context=MEDICAL_PROMPT)
+            except torch.cuda.OutOfMemoryError:
+                print(f"[TRANSCRIBER]   OOM again — trying without context...")
+                try:
+                    results = model.transcribe(audio=batch_audio, language="French")
+                except Exception as e3:
+                    print(f"[TRANSCRIBER]   Batch {batch_num} failed completely — skipping.")
+                    torch.cuda.empty_cache()
+                    continue
     except Exception as e:
         print(f"[TRANSCRIBER]   Batch {batch_num} failed — {e}. Trying without context...")
         try:
