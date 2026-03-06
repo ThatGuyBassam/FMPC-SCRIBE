@@ -31,9 +31,9 @@ def get_candidates_from_schedule(file_path):
         try:
             result = subprocess.run(
                 ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", file_path],
-                capture_output=True, text=True, timeout=10
+                capture_output=True, timeout=10
             )
-            info = json.loads(result.stdout)
+            info = json.loads(result.stdout.decode("utf-8", errors="ignore"))
             tags = info.get("format", {}).get("tags", {})
             # Phone recordings typically store date in these tags
             for key in ["creation_time", "date", "DATE", "CREATION_TIME"]:
