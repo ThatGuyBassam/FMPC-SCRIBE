@@ -190,68 +190,88 @@ def build_label(file_path, transcript_text):
     print(f"[PROCESSOR] Final label: {label}")
     return label, discipline, professor
 
-# ─── COMBINED CORRECTION + FILTER (single pass) ───────────────────
-def process_transcript_chunked(transcript_text):
-    """
-    Single Ollama pass that simultaneously:
-    1. Corrects phonetic/spelling errors in medical terms
-    2. Removes non-medical content (banter, admin, jokes)
-    Halves processor time vs two sequential passes.
-    """
-    paragraphs = transcript_text.split('\n\n')
-    chunks_to_process = []
-    current_chunk = []
-    current_len = 0
-
+# ─── SHARED CHUNKER ───────────────────────────────────────────────
+def _chunk_transcript(text):
+    paragraphs = text.split("\n\n")
+    chunks, current, current_len = [], [], 0
     for p in paragraphs:
         if not p.strip():
             continue
-        if current_len + len(p) > MAX_CHUNK_CHARS and current_chunk:
-            chunks_to_process.append("\n\n".join(current_chunk))
-            current_chunk = [p]
-            current_len = len(p)
+        if current_len + len(p) > MAX_CHUNK_CHARS and current:
+            chunks.append("\n\n".join(current))
+            current, current_len = [p], len(p)
         else:
-            current_chunk.append(p)
+            current.append(p)
             current_len += len(p)
-    if current_chunk:
-        chunks_to_process.append("\n\n".join(current_chunk))
+    if current:
+        chunks.append("\n\n".join(current))
+    return chunks
 
-    total_chunks = len(chunks_to_process)
-    print(f"[PROCESSOR] Processing {total_chunks} chunks (correction + filter combined)...")
-
-    processed = []
-    for i, chunk in enumerate(chunks_to_process, 1):
-        print(f"[PROCESSOR]   Processing chunk {i}/{total_chunks}...")
+# ─── PASS 1: PHONETIC CORRECTION ───────────────────────────────────
+def clean_transcript_chunked(transcript_text):
+    chunks = _chunk_transcript(transcript_text)
+    total  = len(chunks)
+    print(f"[PROCESSOR] Correcting transcript across {total} chunks...")
+    result = []
+    for i, chunk in enumerate(chunks, 1):
+        print(f"[PROCESSOR]   Correcting chunk {i}/{total}...")
         prompt = (
-            "Tu es un correcteur et filtre de contenu médical pour la FMPC. "
-            "Effectue CES DEUX OPÉRATIONS sur le texte ci-dessous:\n"
-            "1. CORRECTION: Corrige uniquement les erreurs phonétiques et fautes d'orthographe "
-            "des termes médicaux. Ne modifie pas le style, ne résume pas, ne reformule pas.\n"
-            "2. FILTRE: Supprime les passages non médicaux (bavardages, blagues, organisation, "
-            "échanges hors-sujet, commentaires personnels). Conserve TOUT le contenu médical.\n\n"
-            "RÈGLES STRICTES:\n"
-            "- Renvoie EXCLUSIVEMENT le texte traité\n"
-            "- Aucune phrase d'introduction (pas de 'Voici le texte...')\n"
-            "- Si un paragraphe est entièrement non médical, supprime-le\n"
-            "- Ne rajoute aucune information extérieure\n\n"
-            "Texte:\n" + chunk
+            "Tu es un correcteur orthographique médical expert pour la FMPC. "
+            "Corrige UNIQUEMENT les erreurs phonétiques et fautes d'orthographe "
+            "des termes médicaux du texte suivant. "
+            "RÈGLES STRICTES : Ne résume pas. Ne modifie pas le style du professeur. "
+            "N'ajoute AUCUNE phrase d'introduction. "
+            "Renvoie EXCLUSIVEMENT le texte corrigé.\n\n"
+            "Texte à corriger :\n" + chunk
         )
         try:
             res = requests.post(OLLAMA_URL, json={
-                "model": OLLAMA_MODEL,
-                "prompt": prompt,
-                "stream": False,
+                "model": OLLAMA_MODEL, "prompt": prompt, "stream": False,
                 "options": {"num_predict": 2048}
             }, timeout=150)
-            result = res.json().get("response", "").strip()
-            if result.lower().startswith("voici"):
-                result = result.split(":", 1)[-1].strip()
-            processed.append(result if result else chunk)
+            cleaned = res.json().get("response", "").strip()
+            if cleaned.lower().startswith("voici"):
+                cleaned = cleaned.split(":", 1)[-1].strip()
+            result.append(cleaned if cleaned else chunk)
         except Exception as e:
             print(f"[PROCESSOR]   WARNING: Chunk {i} failed ({e}). Keeping original.")
-            processed.append(chunk)
+            result.append(chunk)
+    return "\n\n".join(result)
 
-    return "\n\n".join(processed)
+# ─── PASS 2: MEDICAL CONTENT FILTER ────────────────────────────────
+def filter_transcript_chunked(transcript_text):
+    chunks = _chunk_transcript(transcript_text)
+    total  = len(chunks)
+    print(f"[PROCESSOR] Filtering medical content across {total} chunks...")
+    result = []
+    for i, chunk in enumerate(chunks, 1):
+        print(f"[PROCESSOR]   Filtering chunk {i}/{total}...")
+        prompt = (
+            "Tu es un filtre de contenu médical pour la FMPC. "
+            "Supprime UNIQUEMENT les passages non médicaux : bavardages, organisation du semestre, "
+            "blagues, échanges avec les étudiants, commentaires personnels du professeur. "
+            "Conserve TOUT le contenu médical : définitions, anatomie, physiologie, "
+            "histologie, pathologie, biochimie, embryologie, bactériologie, immunologie, hématologie. "
+            "Ne résume pas. Ne reformule pas. Ne rajoute rien. "
+            "N'ajoute AUCUNE phrase d'introduction. "
+            "Si un paragraphe entier est non médical, supprime-le complètement. "
+            "Renvoie EXCLUSIVEMENT le texte filtré.\n\n"
+            "Texte à filtrer :\n" + chunk
+        )
+        try:
+            res = requests.post(OLLAMA_URL, json={
+                "model": OLLAMA_MODEL, "prompt": prompt, "stream": False,
+                "options": {"num_predict": 2048}
+            }, timeout=150)
+            filtered = res.json().get("response", "").strip()
+            if filtered.lower().startswith("voici"):
+                filtered = filtered.split(":", 1)[-1].strip()
+            if filtered:
+                result.append(filtered)
+        except Exception as e:
+            print(f"[PROCESSOR]   WARNING: Chunk {i} failed ({e}). Keeping original.")
+            result.append(chunk)
+    return "\n\n".join(result)
 
 # ─── MAIN ──────────────────────────────────────────────────────────
 def main():
@@ -277,20 +297,20 @@ def main():
 
     print(f"[PROCESSOR] Loaded raw transcript — {segment_count} segments, {paragraph_count} paragraphs")
 
-    # STEP 1: CORRECTION + FILTER (single combined pass)
-    print("[PROCESSOR] Step 1/4: Correcting and filtering transcript (combined pass)...")
-    processed_transcript = process_transcript_chunked(raw_transcript)
+    # STEP 1: PHONETIC CORRECTION
+    print("[PROCESSOR] Step 1/5: Correcting phonetic medical errors...")
+    cleaned_transcript = clean_transcript_chunked(raw_transcript)
 
-    # For compatibility: both full and filtered point to the same processed result
-    cleaned_transcript  = processed_transcript
-    filtered_transcript = processed_transcript
+    # STEP 2: MEDICAL CONTENT FILTER
+    print("[PROCESSOR] Step 2/5: Filtering to medical content only...")
+    filtered_transcript = filter_transcript_chunked(cleaned_transcript)
 
-    # STEP 2: BUILD LABEL
-    print("[PROCESSOR] Step 2/4: Building label...")
+    # STEP 3: BUILD LABEL
+    print("[PROCESSOR] Step 3/5: Building label...")
     label, discipline, professor = build_label(file_path, filtered_transcript)
 
-    # STEP 3: SAVE BOTH VERSIONS
-    print("[PROCESSOR] Step 3/4: Saving transcripts...")
+    # STEP 4: SAVE BOTH VERSIONS
+    print("[PROCESSOR] Step 4/5: Saving transcripts...")
 
     header_full = (
         f"TRANSCRIPT (FULL): {label}\n"
@@ -322,7 +342,7 @@ def main():
     print(f"[PROCESSOR] Filtered transcript → SSD + HDD")
 
     # STEP 5: AUTO-INGEST TRANSCRIPT INTO CHROMADB
-    print("[PROCESSOR] Step 4a/4: Ingesting transcript into ChromaDB...")
+    print("[PROCESSOR] Step 5a/5: Ingesting transcript into ChromaDB...")
     try:
         from ingest_slides import ingest_transcript
         ingest_transcript(full_ssd, discipline or "unknown", label, professor)
@@ -331,7 +351,7 @@ def main():
         print("[PROCESSOR] Run ingest_slides.py manually to index later.")
 
     # STEP 6: ARCHIVE AUDIO AS OPUS
-    print("[PROCESSOR] Step 4b/4: Archiving audio...")
+    print("[PROCESSOR] Step 5b/5: Archiving audio...")
     out_opus = os.path.join(ARCHIVE_HDD, label + ".opus")
     result_ffmpeg = subprocess.run([
         "ffmpeg", "-i", file_path,
