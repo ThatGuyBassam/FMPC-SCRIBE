@@ -314,7 +314,7 @@ async def generate_qcm(req: QCMRequest):
     context      = build_context(results)
     existing_qs  = _all_bank_questions()   # avoid repeating banked questions
     all_q        = []
-    MAX_ATTEMPTS = 10   # safety cap
+    MAX_ATTEMPTS = 3    # safety cap — with larger batches 3 is enough
     attempt      = 0
 
     # ── Extract claims ONCE before the generation loop ──────────────
@@ -333,7 +333,7 @@ async def generate_qcm(req: QCMRequest):
     while len(all_q) < N_QCM and attempt < MAX_ATTEMPTS:
         attempt += 1
         needed    = N_QCM - len(all_q)
-        batch_n   = min(4, needed)
+        batch_n   = min(8, needed)
 
         # ── Generate QCMs strictly from extracted claims ──
         avoid_current = [q["question"][:70] for q in all_q]
@@ -361,7 +361,7 @@ async def generate_qcm(req: QCMRequest):
             '"correct":["A"],"explanation":"Citation du cours: ...","distractors":{"B":"..."},"source_claim":"..."}]'
         )
 
-        raw = ollama(prompt, timeout=180)
+        raw = ollama(prompt, timeout=300)
         arr = extract_json_array(raw)
         if arr:
             try:
@@ -902,3 +902,4 @@ async def generate_preexam_session(req: PreExamRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=True)
+
