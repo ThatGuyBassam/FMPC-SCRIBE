@@ -134,7 +134,8 @@ def build_context(results):
 def ollama(prompt, timeout=180):
     try:
         res = requests.post(OLLAMA_URL, json={
-            "model": OLLAMA_MODEL, "prompt": prompt, "stream": False
+            "model": OLLAMA_MODEL, "prompt": prompt, "stream": False,
+            "options": {"num_ctx": 4096}
         }, timeout=timeout)
         return res.json().get("response", "").strip()
     except Exception as e:
@@ -902,4 +903,3 @@ async def generate_preexam_session(req: PreExamRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=True)
-
