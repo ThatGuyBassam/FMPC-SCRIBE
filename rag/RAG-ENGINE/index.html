@@ -1469,22 +1469,32 @@ function updateQCMScore() {
   $('qcm-pct').style.color = pct >= 50 ? 'var(--green)' : (answered === total && total > 0 ? 'var(--red)' : 'var(--text-1)');
 }
 
-function renderQCMQuestion(q, index) {
+function renderQCMQuestion(q, index, prefix) {
+  const pfx = prefix || 'qcm';
+  const containerMap = {
+    'bank':    'bank-questions',
+    'weak':    'weak-questions',
+    'preexam': 'preexam-questions',
+  };
+  const containerId = containerMap[pfx] || 'qcm-questions';
+  const container   = $(containerId);
+  if (!container) return;
+
   const card = document.createElement('div');
   card.className = 'q-card';
-  card.id = `qcm-card-${index}`;
+  card.id = `${pfx}-card-${index}`;
 
   const letters = ['A','B','C','D','E'];
   const choicesHTML = letters.map(l => {
     const text = q.choices[l] || '';
     if (!text) return '';
     return `
-      <label class="choice-label" id="qcm-cl-${index}-${l}">
-        <input type="checkbox" id="qcm-cb-${index}-${l}">
+      <label class="choice-label" id="${pfx}-cl-${index}-${l}">
+        <input type="checkbox" id="${pfx}-cb-${index}-${l}">
         <span class="choice-check">✓</span>
         <span class="choice-letter">${l}</span>
         <span>${text}</span>
-        <span class="state-icon" id="qcm-si-${index}-${l}"></span>
+        <span class="state-icon" id="${pfx}-si-${index}-${l}"></span>
       </label>`;
   }).join('');
 
@@ -1493,78 +1503,111 @@ function renderQCMQuestion(q, index) {
       <span class="q-badge">Q${index + 1}</span>
       <span class="q-text">${q.question}</span>
     </div>
-    <div class="choices" id="qcm-choices-${index}">${choicesHTML}</div>
+    <div class="choices" id="${pfx}-choices-${index}">${choicesHTML}</div>
     <div class="q-footer">
-      <span class="q-result" id="qcm-result-${index}"></span>
-      <button class="btn btn-primary" id="qcm-submit-${index}" style="font-size:0.82rem;padding:7px 16px">
+      <span class="q-result" id="${pfx}-result-${index}"></span>
+      <button class="btn btn-primary" id="${pfx}-submit-${index}" style="font-size:0.82rem;padding:7px 16px">
         Valider
       </button>
     </div>
-    <div class="correction-wrap" id="qcm-corr-${index}"></div>
+    <div class="correction-wrap" id="${pfx}-corr-${index}"></div>
   `;
 
-  $('qcm-questions').appendChild(card);
+  container.appendChild(card);
 
-  $(`qcm-submit-${index}`).addEventListener('click', () => submitQCMQuestion(q, index));
+  // Add confidence checkbox
+  const footer = card.querySelector('.q-footer');
+  if (footer) {
+    const row = document.createElement('div');
+    row.className = 'confidence-row';
+    row.id = `conf-row-${pfx}-${index}`;
+    row.innerHTML = `<label><input type="checkbox" id="conf-${pfx}-${index}" checked> Je suis sûr(e) de ma réponse</label>`;
+    footer.insertBefore(row, footer.firstChild);
+  }
+
+  $(`${pfx}-submit-${index}`).addEventListener('click', () => submitQCMQuestion(q, index, pfx));
 }
 
-function submitQCMQuestion(q, index) {
-  if (state.qcm.submitted[index]) return;
+function submitQCMQuestion(q, index, prefix) {
+  const pfx = prefix || 'qcm';
+  const alreadySubmitted = pfx === 'bank'
+    ? bankState.practice.submitted[index]
+    : state.qcm.submitted[index];
+  if (alreadySubmitted) return;
 
   const selected = ['A','B','C','D','E'].filter(l => {
-    const cb = $(`qcm-cb-${index}-${l}`);
+    const cb = $(`${pfx}-cb-${index}-${l}`);
     return cb && cb.checked;
   });
-
   const correct  = q.correct || [];
-  const isRight  = JSON.stringify(selected.sort()) === JSON.stringify(correct.sort());
+  const isRight  = JSON.stringify(selected.sort()) === JSON.stringify([...correct].sort());
 
-  state.qcm.submitted[index] = true;
-  state.qcm.answers[index]   = selected;
-  state.qcm.answered++;
-  if (isRight) state.qcm.correct++;
+  // Update state
+  if (pfx === 'bank') {
+    bankState.practice.submitted[index] = true;
+    bankState.practice.answered++;
+    if (isRight) bankState.practice.correct++;
+  } else {
+    state.qcm.submitted[index] = true;
+    state.qcm.answers[index]   = selected;
+    state.qcm.answered++;
+    if (isRight) state.qcm.correct++;
+  }
 
-  // Lock checkboxes
+  // Lock choices and apply visual feedback
   ['A','B','C','D','E'].forEach(l => {
-    const label = $(`qcm-cl-${index}-${l}`);
-    const cb    = $(`qcm-cb-${index}-${l}`);
-    const si    = $(`qcm-si-${index}-${l}`);
+    const label = $(`${pfx}-cl-${index}-${l}`);
+    const cb    = $(`${pfx}-cb-${index}-${l}`);
+    const si    = $(`${pfx}-si-${index}-${l}`);
     if (!label) return;
-
     label.classList.add('locked');
     label.style.cursor = 'default';
     if (cb) cb.disabled = true;
-
-    const inCorrect   = correct.includes(l);
-    const wasSelected = selected.includes(l);
-
+    const inc = correct.includes(l), was = selected.includes(l);
     label.classList.remove('correct-hit','correct-miss','wrong-pick','neutral-after');
-    if (inCorrect && wasSelected)  { label.classList.add('correct-hit');  if (si) si.textContent = '✓'; }
-    else if (inCorrect)            { label.classList.add('correct-miss'); if (si) si.textContent = '⚠'; }
-    else if (wasSelected)          { label.classList.add('wrong-pick');   if (si) si.textContent = '✕'; }
-    else                           { label.classList.add('neutral-after');}
+    if (inc && was)  { label.classList.add('correct-hit');  if(si) si.textContent='✓'; }
+    else if (inc)    { label.classList.add('correct-miss'); if(si) si.textContent='⚠'; }
+    else if (was)    { label.classList.add('wrong-pick');   if(si) si.textContent='✕'; }
+    else             { label.classList.add('neutral-after'); }
   });
 
-  const resultEl = $(`qcm-result-${index}`);
-  resultEl.style.display = 'block';
-  if (isRight) {
-    resultEl.textContent = '✓ correct';
-    resultEl.className = 'q-result pass';
-  } else {
-    resultEl.textContent = `✕ — bonne réponse: ${correct.join(', ')}`;
-    resultEl.className = 'q-result fail';
+  // Result line
+  const resultEl = $(`${pfx}-result-${index}`);
+  if (resultEl) {
+    resultEl.style.display = 'block';
+    resultEl.textContent   = isRight ? '✓ correct' : `✕ — bonne réponse: ${correct.join(', ')}`;
+    resultEl.className     = `q-result ${isRight ? 'pass' : 'fail'}`;
   }
 
-  // Build correction panel
-  const corrWrap = document.getElementById(`qcm-corr-${index}`);
+  // Correction panel
+  const corrWrap = $(`${pfx}-corr-${index}`);
   if (corrWrap) {
-    const html = buildCorrectionHTML(q.explanation, q.distractors, correct, q.choices, q.source_claim);
-    if (html) { corrWrap.outerHTML = html; }
+    corrWrap.innerHTML = '';
+    const distractors = q.distractors || {};
+    let html = '';
+    if (q.explanation) html += `<div class="correction-correct"><span class="corr-label">✓ Pourquoi c'est correct</span>${q.explanation}</div>`;
+    ['A','B','C','D','E'].forEach(l => {
+      if (correct.includes(l) || !q.choices[l]) return;
+      const reason = distractors[l] || distractors[l.toLowerCase()] || '';
+      if (reason) html += `<div class="correction-wrong"><span class="corr-label">✕ Pourquoi ${l} est faux</span>${reason}</div>`;
+    });
+    if (html) { corrWrap.innerHTML = html; corrWrap.style.display = 'flex'; }
   }
 
-  $(`qcm-submit-${index}`).style.display = 'none';
-  $(`qcm-card-${index}`).classList.add('answered');
-  updateQCMScore();
+  $(`${pfx}-submit-${index}`).style.display = 'none';
+  $(`${pfx}-card-${index}`).classList.add('answered');
+
+  // Remove confidence row and record answer
+  const confident = getConfidence(pfx, index);
+  const confRow   = document.getElementById(`conf-row-${pfx}-${index}`);
+  if (confRow) confRow.remove();
+  recordAnswer(q, isRight, confident, pfx);
+
+  // Update score
+  if (pfx === 'bank') updateBankScore();
+  else if (pfx === 'weak') { weakState.answered++; if(isRight) weakState.correct++; updateWeakScore(); }
+  else if (pfx === 'preexam') { preexamState.answered++; if(isRight) preexamState.correct++; updatePreExamScore(); }
+  else updateQCMScore();
 }
 
 async function generateQCM() {
@@ -2156,120 +2199,6 @@ $('qcm-save').addEventListener('click', async () => {
   $('qcm-save').textContent = '💾 Sauvegarder';
 });
 
-/* ── Update renderQCMQuestion to support bank prefix ── */
-const _origRenderQCM = renderQCMQuestion;
-function renderQCMQuestion(q, index, prefix) {
-  const pfx       = prefix || 'qcm';
-  const container = pfx === 'bank' ? $('bank-questions') : $('qcm-questions');
-  const answered  = pfx === 'bank'
-    ? bankState.practice.submitted[index]
-    : state.qcm.submitted && state.qcm.submitted[index];
-
-  const card = document.createElement('div');
-  card.className = 'q-card';
-  card.id = `${pfx}-card-${index}`;
-
-  const letters = ['A','B','C','D','E'];
-  const choicesHTML = letters.map(l => {
-    const text = q.choices[l] || '';
-    if (!text) return '';
-    return `
-      <label class="choice-label" id="${pfx}-cl-${index}-${l}">
-        <input type="checkbox" id="${pfx}-cb-${index}-${l}">
-        <span class="choice-check">✓</span>
-        <span class="choice-letter">${l}</span>
-        <span>${text}</span>
-        <span class="state-icon" id="${pfx}-si-${index}-${l}"></span>
-      </label>`;
-  }).join('');
-
-  card.innerHTML = `
-    <div class="q-header">
-      <span class="q-badge">Q${index + 1}</span>
-      <span class="q-text">${q.question}</span>
-    </div>
-    <div class="choices" id="${pfx}-choices-${index}">${choicesHTML}</div>
-    <div class="q-footer">
-      <span class="q-result" id="${pfx}-result-${index}"></span>
-      <button class="btn btn-primary" id="${pfx}-submit-${index}" style="font-size:0.82rem;padding:7px 16px">
-        Valider
-      </button>
-    </div>
-    <div class="correction-wrap" id="${pfx}-corr-${index}"></div>
-  `;
-  container.appendChild(card);
-
-  $(`${pfx}-submit-${index}`).addEventListener('click', () => submitQCMQuestion(q, index, pfx));
-}
-
-/* ── Patch submitQCMQuestion to handle prefix + bank score ── */
-const _origSubmit = submitQCMQuestion;
-function submitQCMQuestion(q, index, prefix) {
-  const pfx = prefix || 'qcm';
-  if (pfx === 'bank' ? bankState.practice.submitted[index] : state.qcm.submitted[index]) return;
-
-  const selected = ['A','B','C','D','E'].filter(l => {
-    const cb = $(`${pfx}-cb-${index}-${l}`);
-    return cb && cb.checked;
-  });
-  const correct  = q.correct || [];
-  const isRight  = JSON.stringify(selected.sort()) === JSON.stringify([...correct].sort());
-
-  if (pfx === 'bank') {
-    bankState.practice.submitted[index] = true;
-    bankState.practice.answered++;
-    if (isRight) bankState.practice.correct++;
-  } else {
-    state.qcm.submitted[index] = true;
-    state.qcm.answers[index]   = selected;
-    state.qcm.answered++;
-    if (isRight) state.qcm.correct++;
-  }
-
-  ['A','B','C','D','E'].forEach(l => {
-    const label = $(`${pfx}-cl-${index}-${l}`);
-    const cb    = $(`${pfx}-cb-${index}-${l}`);
-    const si    = $(`${pfx}-si-${index}-${l}`);
-    if (!label) return;
-    label.classList.add('locked');
-    label.style.cursor = 'default';
-    if (cb) cb.disabled = true;
-    const inc = correct.includes(l), was = selected.includes(l);
-    label.classList.remove('correct-hit','correct-miss','wrong-pick','neutral-after');
-    if (inc && was)  { label.classList.add('correct-hit');  if(si) si.textContent='✓'; }
-    else if (inc)    { label.classList.add('correct-miss'); if(si) si.textContent='⚠'; }
-    else if (was)    { label.classList.add('wrong-pick');   if(si) si.textContent='✕'; }
-    else             { label.classList.add('neutral-after'); }
-  });
-
-  const resultEl = $(`${pfx}-result-${index}`);
-  resultEl.style.display = 'block';
-  resultEl.textContent   = isRight ? '✓ correct' : `✕ — bonne réponse: ${correct.join(', ')}`;
-  resultEl.className     = `q-result ${isRight ? 'pass' : 'fail'}`;
-
-  const corrWrap = $(`${pfx}-corr-${index}`);
-  if (corrWrap) {
-    corrWrap.innerHTML = '';
-    const distractors = q.distractors || {};
-    let html = '';
-    if (q.explanation) html += `<div class="correction-correct"><span class="corr-label">✓ Pourquoi c'est correct</span>${q.explanation}</div>`;
-    ['A','B','C','D','E'].forEach(l => {
-      if (correct.includes(l) || !q.choices[l]) return;
-      const reason = distractors[l] || distractors[l.toLowerCase()] || '';
-      if (reason) html += `<div class="correction-wrong"><span class="corr-label">✕ Pourquoi ${l} est faux</span>${reason}</div>`;
-    });
-    if (html) { corrWrap.innerHTML = html; corrWrap.style.display = 'flex'; }
-  }
-
-  $(`${pfx}-submit-${index}`).style.display = 'none';
-  $(`${pfx}-card-${index}`).classList.add('answered');
-
-  if (pfx === 'bank') updateBankScore();
-  else if (pfx === 'weak') { weakState.answered++; if(wasCorrect) weakState.correct++; updateWeakScore(); }
-  else if (pfx === 'preexam') { preexamState.answered++; if(wasCorrect) preexamState.correct++; updatePreExamScore(); }
-  else updateQCMScore();
-}
-
 /* ── COURSES ─────────────────────────────────────────────────────── */
 let _allCourses = {};
 
@@ -2355,36 +2284,6 @@ async function recordAnswer(q, wasCorrect, confident, pfx) {
       })
     });
   } catch(e) {}
-}
-
-/* ── PATCH renderQCMQuestion to add confidence checkbox ── */
-const _origRenderForConf = renderQCMQuestion;
-function renderQCMQuestion(q, index, prefix) {
-  _origRenderForConf(q, index, prefix);
-  const pfx = prefix || 'qcm';
-  const card = document.getElementById(`${pfx}-card-${index}`);
-  if (card) addConfidenceCheckbox(card, pfx, index);
-}
-
-/* ── PATCH submitQCMQuestion to record answer ── */
-const _origSubmitForRecord = submitQCMQuestion;
-function submitQCMQuestion(q, index, prefix) {
-  const pfx       = prefix || 'qcm';
-  const confident = getConfidence(pfx, index);
-
-  // Call original submit
-  _origSubmitForRecord(q, index, prefix);
-
-  // Determine correctness from result element
-  const resultEl = document.getElementById(`${pfx}-result-${index}`);
-  const wasCorrect = resultEl && resultEl.classList.contains('pass');
-
-  // Remove confidence row after submission
-  const confRow = document.getElementById(`conf-row-${pfx}-${index}`);
-  if (confRow) confRow.remove();
-
-  // Record to history
-  recordAnswer(q, wasCorrect, confident, pfx);
 }
 
 /* ── TIMELINE ────────────────────────────────────────────────────── */
@@ -2726,3 +2625,4 @@ loadCourses();
 </script>
 </body>
 </html>
+
